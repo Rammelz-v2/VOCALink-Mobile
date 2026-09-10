@@ -4,20 +4,9 @@ export interface Student {
   id: number;
   name: string;
   status: StudentStatus;
-  lastMsg: string;
-  time: string;
   bg: string;
   color: string;
-  unread: number;
 }
-
-export interface Message {
-  from: "student" | "teacher";
-  text: string;
-  time: string;
-}
-
-export type Messages = Record<number, Message[]>;
 
 export interface AACIcon {
   id: string;
@@ -37,7 +26,7 @@ export type AACCategory =
 export interface CCLine {
   text: string;
   time: string;
-  speaker: "teacher" | "reply";
+  speaker: "teacher" | "aac";
 }
 
 // 💥 Added the User interface here to match FastAPI

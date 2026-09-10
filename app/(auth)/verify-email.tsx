@@ -85,7 +85,7 @@ export default function VerifyEmailScreen() {
               onPress={async () => {
                 setResending(true);
                 try {
-                  await fetch(`${API}/forgot-password/`, {
+                  await fetch(`${API}/resend-verification/`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ email }),

@@ -1,4 +1,4 @@
-import type { AACIcon, CCLine, Message } from "./types";
+import type { AACIcon, CCLine } from "./types";
 
 export const CURRENT_STUDENT = {
   id: 1,
@@ -152,14 +152,6 @@ export const QUICK_ICONS = AAC_ICONS.filter((i) =>
   ["water", "toilet", "help", "question", "done", "happy"].includes(i.id),
 );
 
-// ─── MESSAGES ─────────────────────────────────────────────────────────────────
-export const STUDENT_MESSAGES: Message[] = [
-  { from: "student", text: "I want water 💧", time: "10:32" },
-  { from: "teacher", text: "OK — I'll get some.", time: "10:33" },
-  { from: "student", text: "Thank you 🙏", time: "10:34" },
-  { from: "teacher", text: "You're doing great!", time: "10:40" },
-];
-
 // ─── LIVE CC LOG ──────────────────────────────────────────────────────────────
 export const CC_LINES: CCLine[] = [
   {
@@ -177,11 +169,9 @@ export const CC_LINES: CCLine[] = [
     text: "Today we will discuss the parts of a plant.",
     time: "10:12",
   },
-  { speaker: "reply", text: "OK — I'll get some water.", time: "10:33" },
   {
     speaker: "teacher",
     text: "Listen carefully. I will explain the root system.",
     time: "10:20",
   },
-  { speaker: "reply", text: "You're doing great!", time: "10:40" },
 ];

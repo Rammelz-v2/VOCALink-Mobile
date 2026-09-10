@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import axios from "axios";
-import { Audio } from "expo-av";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../constants/api";
 import { Colors as C, FontSize, Radius, Shadow, Spacing } from "../../constants/tokens";
@@ -37,13 +36,9 @@ export default function TeacherLiveCC({ setActive }: Props) {
   const [lines, setLines]               = useState<CCLine[]>([]);
   const [input, setInput]               = useState("");
   const [isSending, setIsSending]       = useState(false);
-  const [isVoiceRec, setIsVoiceRec]     = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
-  const lastCCIdRef    = useRef<number>(0);
-  const lastReplyIdRef = useRef<number>(0);
-  const lastAacIdRef   = useRef<number>(0);
+  const lastCCIdRef  = useRef<number>(0);
+  const lastAacIdRef = useRef<number>(0);
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordingRef   = useRef<Audio.Recording | null>(null);
 
   // ── Poll captions + student replies + AAC icon taps ───────────────────────
   const poll = useCallback(async () => {
@@ -68,27 +63,7 @@ export default function TeacherLiveCC({ setActive }: Props) {
         lastCCIdRef.current = ccMsgs[ccMsgs.length - 1].id;
       }
 
-      // 2. Student typed replies
-      const replyRes = await axios.get(
-        `${API_BASE_URL}/messages/my-students?since=${lastReplyIdRef.current}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const replies: any[] = replyRes.data;
-      if (replies.length > 0) {
-        const formatted: CCLine[] = replies.map((m) => ({
-          id:          `reply-${m.id}`,
-          text:        m.text,
-          speaker:     "student" as const,
-          time:        m.sent_at
-            ? new Date(m.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          studentName: m.student_name || "Student",
-        }));
-        setLines((prev) => [...prev, ...formatted]);
-        lastReplyIdRef.current = replies[replies.length - 1].id;
-      }
-
-      // 3. AAC icon taps from the session log
+      // 2. AAC icon taps from the session log
       const aacRes = await axios.get(
         `${API_BASE_URL}/sessions/logs/?since=${lastAacIdRef.current}`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -139,74 +114,6 @@ export default function TeacherLiveCC({ setActive }: Props) {
     }
   };
 
-  // ── Voice recording → STT → auto-broadcast ────────────────────────────────
-  const startVoiceRecord = async () => {
-    try {
-      const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) {
-        Alert.alert("Permission needed", "Please allow microphone access in your device settings.");
-        return;
-      }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync({
-        android: {
-          extension: ".m4a",
-          outputFormat: 2,   // MPEG_4
-          audioEncoder: 3,   // AAC
-          sampleRate: 16000,
-          numberOfChannels: 1,
-          bitRate: 64000,
-        },
-        ios: {
-          extension: ".wav",
-          outputFormat: "lpcm" as any,
-          audioQuality: 127,
-          sampleRate: 16000,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: {},
-      });
-      recordingRef.current = recording;
-      setIsVoiceRec(true);
-    } catch {
-      Alert.alert("Error", "Could not start recording. Check microphone permissions.");
-    }
-  };
-
-  const stopVoiceRecord = async () => {
-    if (!recordingRef.current) return;
-    setIsVoiceRec(false);
-    setTranscribing(true);
-    try {
-      await recordingRef.current.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-      if (!uri || !token) return;
-
-      const form = new FormData();
-      form.append("audio", { uri, name: "audio.m4a", type: "audio/m4a" } as any);
-      const res = await axios.post(`${API_BASE_URL}/stt/`, form, {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
-      });
-      const transcribed = res.data?.text?.trim();
-      if (transcribed) {
-        // Auto-broadcast immediately instead of populating the input
-        await broadcastMessage(transcribed);
-      } else {
-        Alert.alert("No speech detected", "Try speaking more clearly and try again.");
-      }
-    } catch {
-      Alert.alert("Transcription failed", "Type manually instead, or try again.");
-    } finally {
-      setTranscribing(false);
-    }
-  };
-
   // ── End session ───────────────────────────────────────────────────────────
   const handleEndSession = () => {
     Alert.alert(
@@ -242,7 +149,7 @@ export default function TeacherLiveCC({ setActive }: Props) {
         <View style={s.header}>
           <View style={{ flex: 1 }}>
             <Text style={s.headerTitle}>Live Class Room</Text>
-            <Text style={s.headerSub}>🟢 Session active — auto-broadcasting your speech</Text>
+            <Text style={s.headerSub}>🟢 Session active — type to broadcast</Text>
           </View>
           <TouchableOpacity onPress={handleEndSession} style={s.endBtn}>
             <Text style={s.endBtnText}>End Class</Text>
@@ -258,7 +165,7 @@ export default function TeacherLiveCC({ setActive }: Props) {
         >
           {lines.length === 0 ? (
             <View style={s.emptyWrap}>
-              <Text style={s.emptyText}>Nothing yet. Hold 🎙️ to speak or type below ↓</Text>
+              <Text style={s.emptyText}>Nothing yet. Type below to broadcast ↓</Text>
             </View>
           ) : (
             lines.map((line) => {
@@ -287,29 +194,12 @@ export default function TeacherLiveCC({ setActive }: Props) {
           )}
         </ScrollView>
 
-        {/* Transcribing indicator */}
-        {transcribing && (
-          <View style={s.transcribingBar}>
-            <Text style={s.transcribingText}>⏳ Transcribing & broadcasting…</Text>
-          </View>
-        )}
-
         {/* Input */}
         <View style={s.inputContainer}>
-          {/* Mic button — hold to record, release to transcribe + auto-broadcast */}
-          <TouchableOpacity
-            onPressIn={startVoiceRecord}
-            onPressOut={stopVoiceRecord}
-            disabled={transcribing}
-            style={[s.micBtn, isVoiceRec && s.micBtnActive, transcribing && s.micBtnDisabled]}
-          >
-            <Text style={s.micBtnText}>{isVoiceRec ? "🔴" : "🎙️"}</Text>
-          </TouchableOpacity>
-
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Type or hold 🎙️ to speak…"
+            placeholder="Type to broadcast…"
             placeholderTextColor={C.text3}
             multiline
             style={s.largeInput}
@@ -348,15 +238,8 @@ const s = StyleSheet.create({
   replyCard:      { backgroundColor: C.purpleLight, borderRadius: Radius.md, padding: Spacing.md, borderWidth: 1, borderColor: C.gray2, ...Shadow.sm },
   replySpeaker:   { fontSize: FontSize.sm, fontWeight: "700", color: C.purple },
   replyText:      { fontSize: 20, color: C.text, lineHeight: 28 },
-  // Transcribing bar
-  transcribingBar:  { paddingHorizontal: Spacing.lg, paddingVertical: 6, backgroundColor: "#FEF9C3", borderTopWidth: 1, borderTopColor: "#FDE68A" },
-  transcribingText: { fontSize: FontSize.xs, color: "#92400E", fontWeight: "600", textAlign: "center" },
   // Input area
   inputContainer:   { flexDirection: "row", alignItems: "flex-end", padding: Spacing.md, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.gray2, gap: 8 },
-  micBtn:           { width: 48, height: 48, borderRadius: Radius.md, backgroundColor: C.gray, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: C.gray2 },
-  micBtnActive:     { backgroundColor: "#FEE2E2", borderColor: "#FCA5A5" },
-  micBtnDisabled:   { opacity: 0.45 },
-  micBtnText:       { fontSize: 22 },
   largeInput:       { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: C.gray, borderRadius: Radius.md, padding: Spacing.md, fontSize: FontSize.base, color: C.text, paddingTop: 14 },
   sendBtn:          { height: 48, paddingHorizontal: 20, borderRadius: Radius.md, backgroundColor: C.teal, alignItems: "center", justifyContent: "center" },
   sendBtnDisabled:  { backgroundColor: C.gray3 },

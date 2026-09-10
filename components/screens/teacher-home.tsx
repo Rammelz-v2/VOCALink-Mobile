@@ -160,14 +160,6 @@ export default function TeacherHome({ setActive }: Props) {
               <Text style={s.toolSub}>Manage roster</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={s.toolCard} onPress={() => setActive("messages")}>
-              <View style={[s.toolIconWrap, { backgroundColor: "#FEF08A" }]}>
-                <Text style={s.toolIcon}>💬</Text>
-              </View>
-              <Text style={s.toolLabel}>Inbox</Text>
-              <Text style={s.toolSub}>Direct messages</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity style={s.toolCard}>
               <View style={[s.toolIconWrap, { backgroundColor: "#FECACA" }]}>
                 <Text style={s.toolIcon}>📊</Text>

@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { CrossAlertProvider } from '../components/CrossAlert';
 
 function RootNavigator() {
   const { token, isLoading } = useAuth();
@@ -37,8 +38,10 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <CrossAlertProvider>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </CrossAlertProvider>
   );
 }

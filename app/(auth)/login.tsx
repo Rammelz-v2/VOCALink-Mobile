@@ -4,7 +4,6 @@ import { StatusBar } from "expo-status-bar";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { loginStyles as styles } from "../../styles/loginStyles";
+import { useCrossAlert } from "../../components/CrossAlert";
 
 const PHOTOS = [
   {
@@ -40,6 +40,7 @@ const PHOTOS = [
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const showAlert = useCrossAlert();
 
   // Replaced the missing useAuthForm hook with standard React state!
   const [username, setUsername] = useState("");
@@ -50,7 +51,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!username || !password) {
-      alert("Please enter both your username/email and password.");
+      showAlert({ title: "Missing Info", message: "Please enter both your username/email and password." });
       return;
     }
 
@@ -58,16 +59,8 @@ export default function LoginScreen() {
     try {
       await login(username, password);
     } catch (error: any) {
-      const detail = error?.response?.data?.detail || error?.message || "";
-      if (detail === "EMAIL_NOT_VERIFIED") {
-        Alert.alert(
-          "Email Not Verified",
-          "Please check your email and enter the verification code.",
-          [{ text: "Verify Now", onPress: () => router.push({ pathname: "/(auth)/verify-email", params: { email: username } } as any) }]
-        );
-      } else {
-        Alert.alert("Login Failed", "Invalid credentials. Please try again.");
-      }
+      // Email-verification handling removed — just show a generic error now.
+      showAlert({ title: "Login Failed", message: "Invalid credentials. Please try again." });
     } finally {
       setLoading(false);
     }

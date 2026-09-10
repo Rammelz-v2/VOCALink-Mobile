@@ -88,24 +88,12 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const rows = chunk(filtered, COLS);
   const messageText = selected.map(i => i.label).join(" ");
 
+  // Tapping an icon only builds the message locally — nothing is sent to
+  // the backend (and therefore nothing appears on the teacher's screen)
+  // until the student taps Send.
   const handleIconPress = (icon: AACIcon) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelected(prev => [...prev, icon]);
-    const headers = { Authorization: `Bearer ${token}` };
-
-    // Always log the tap
-    axios.post(`${API_BASE_URL}/logs/`,
-      { icon_id: icon.id, icon_label: icon.label },
-      { headers }
-    ).catch(() => {});
-
-    // Also log to session if one is active
-    if (sessionCode) {
-      axios.post(`${API_BASE_URL}/sessions/log/`,
-        { session_code: sessionCode, icon_id: icon.id, icon_label: icon.label },
-        { headers }
-      ).catch(() => {});
-    }
   };
 
   const handleSpeak = () => {
@@ -126,16 +114,20 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
 
     const headers = { Authorization: `Bearer ${token}` };
 
-    // Log the tap
+    // Log the whole built message as a single entry — this is the only
+    // network call the AAC board makes per message, and it only fires
+    // once the student has tapped Send.
     axios.post(`${API_BASE_URL}/logs/`,
       { icon_id: "message", icon_label: messageText, message: messageText },
       { headers }
     ).catch(() => {});
 
-    // Also send as a direct message so teacher sees it in Messages page
-    if (user?.teacher_id) {
-      axios.post(`${API_BASE_URL}/messages/`,
-        { receiver_id: user.teacher_id, text: messageText, is_aac: true },
+    // Also log to the active session, if one is running, so the teacher's
+    // session history shows the complete message rather than individual
+    // icon taps.
+    if (sessionCode) {
+      axios.post(`${API_BASE_URL}/sessions/log/`,
+        { session_code: sessionCode, icon_id: "message", icon_label: messageText },
         { headers }
       ).catch(() => {});
     }

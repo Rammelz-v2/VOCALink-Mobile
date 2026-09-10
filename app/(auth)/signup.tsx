@@ -13,10 +13,10 @@ import {
   TextInput,
   ActivityIndicator,
   StyleSheet,
-  Alert
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
+import { useCrossAlert } from "../../components/CrossAlert";
 // Reusing the beautiful styles your groupmate built for the login screen
 import { loginStyles as styles } from "../../styles/loginStyles";
 
@@ -29,6 +29,7 @@ const PHOTOS = [
 
 export default function SignupScreen() {
   const { signup } = useAuth();
+  const showAlert = useCrossAlert();
   
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -39,15 +40,15 @@ export default function SignupScreen() {
 
   const handleSignup = async () => {
     if (!fullName || !username || !email || !password) {
-      Alert.alert("Hold up!", "Please fill in all the fields.");
+      showAlert({ title: "Hold up!", message: "Please fill in all the fields." });
       return;
     }
     if (!/\S+@\S+\.\S+/.test(email)) {
-      Alert.alert("Invalid Email", "Please enter a valid email address (e.g. name@gmail.com).");
+      showAlert({ title: "Invalid Email", message: "Please enter a valid email address (e.g. name@gmail.com)." });
       return;
     }
     if (password.length < 6) {
-      Alert.alert("Weak Password", "Password must be at least 6 characters.");
+      showAlert({ title: "Weak Password", message: "Password must be at least 6 characters." });
       return;
     }
 
@@ -55,12 +56,20 @@ export default function SignupScreen() {
     try {
       console.log(`🚀 Trying to register: ${username} / ${email}`);
       await signup(username, email, password, fullName);
-      router.replace({ pathname: "/(auth)/verify-email", params: { email } } as any);
+
+      // Verification step removed — go straight to login instead.
+      showAlert({
+        title: "Success",
+        message: "Your account was created successfully! You can now sign in.",
+        buttons: [
+          { text: "Sign In", onPress: () => router.replace("/(auth)/login" as any) },
+        ],
+      });
 
     } catch (error) {
       const err = error as any;
       const msg = err.response?.data?.detail || err.message || "Registration failed.";
-      Alert.alert("Signup Failed", msg);
+      showAlert({ title: "Signup Failed", message: msg });
     } finally {
       setLoading(false);
     }
