@@ -7,7 +7,11 @@
     "scheme": "vocalinkmobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lacsyy.VOCALinkMobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,9 +33,8 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "b10a6c4c-c861-4098-90b7-58f1eb25ac2c"
+        "projectId": "10cb986a-f6da-4484-8b4b-b9f122d3431f"
       }
-    },
-    "owner": "lacsyy"
+    }
   }
 }

@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +14,86 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../contexts/AuthContext";
 
+// Preset grade levels for the dropdown. Adjust this list to match what your
+// backend / school actually supports.
+const GRADE_OPTIONS = [
+  "Kindergarten",
+  "Grade 1",
+  "Grade 2",
+  "Grade 3",
+  "Grade 4",
+  "Grade 5",
+  "Grade 6",
+  "Grade 7",
+  "Grade 8",
+  "Grade 9",
+  "Grade 10",
+  "Grade 11",
+  "Grade 12",
+];
+
+// Splits a stored value like "Grade 10 - Section A" into its two parts so
+// the dropdown and the section input can be pre-filled when editing.
+function parseGradeLevel(value: string): { grade: string; section: string } {
+  if (!value) return { grade: "", section: "" };
+  const match = value.match(/^(.*?)(?:\s*-\s*Section\s*(.+))?$/i);
+  return {
+    grade: match?.[1]?.trim() ?? value,
+    section: match?.[2]?.trim() ?? "",
+  };
+}
+
+// A simple, dependency-free dropdown: a tappable field that opens a modal list.
+const GradeDropdown: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <TouchableOpacity
+        style={styles.dropdownField}
+        onPress={() => setOpen(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={value ? styles.dropdownValue : styles.dropdownPlaceholder}>
+          {value || "Select grade level"}
+        </Text>
+        <Text style={styles.dropdownChevron}>⌄</Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>Select Grade Level</Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {GRADE_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.optionRow}
+                  onPress={() => {
+                    onChange(option);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={[styles.optionText, option === value && styles.optionTextSelected]}>
+                    {option}
+                  </Text>
+                  {option === value && <Text style={styles.optionCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalCancel} onPress={() => setOpen(false)}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+};
+
 export default function EditProfileScreen() {
   const { user, updateProfile } = useAuth();
 
@@ -21,11 +102,15 @@ export default function EditProfileScreen() {
   // Shared Fields
   const [firstName, setFirstName] = useState(user?.first_name ?? "");
   const [lastName, setLastName] = useState(user?.last_name ?? "");
-  
-  // Student-only Fields
-  const [gradeLevel, setGradeLevel] = useState(user?.grade_level ?? "");
+
+  // Student-only Fields — grade level is now split into a dropdown (grade)
+  // and a free-text section, then recombined into the same "grade_level"
+  // string the backend already expects.
+  const initialGrade = parseGradeLevel(user?.grade_level ?? "");
+  const [gradeLevel, setGradeLevel] = useState(initialGrade.grade);
+  const [section, setSection] = useState(initialGrade.section);
   const [disabilityType, setDisabilityType] = useState(user?.disability_type ?? "");
-  
+
   // Teacher-only Fields
   const [department, setDepartment] = useState(user?.department ?? "");
   const [gradeHandled, setGradeHandled] = useState(user?.grade_handled ?? "");
@@ -44,10 +129,14 @@ export default function EditProfileScreen() {
         payload.department = department.trim() || undefined;
         payload.grade_handled = gradeHandled.trim() || undefined;
       } else {
-        payload.grade_level = gradeLevel.trim() || undefined;
+        const combinedGrade = section.trim()
+          ? `${gradeLevel} - Section ${section.trim()}`
+          : gradeLevel;
+        payload.grade_level = combinedGrade.trim() || undefined;
         payload.disability_type = disabilityType.trim() || undefined;
       }
 
+      // Same updateProfile call as before — still hits your existing backend endpoint.
       await updateProfile(payload);
       Alert.alert("Saved", "Your profile has been updated.");
       router.back();
@@ -97,15 +186,18 @@ export default function EditProfileScreen() {
 
           {!isTeacher ? (
             <>
-              <Text style={styles.label}>Grade Level & Section</Text>
+              <Text style={styles.label}>Grade Level</Text>
+              <GradeDropdown value={gradeLevel} onChange={setGradeLevel} />
+
+              <Text style={styles.label}>Section</Text>
               <TextInput
                 style={styles.input}
-                value={gradeLevel}
-                onChangeText={setGradeLevel}
-                placeholder="e.g. Grade 10 - Section A"
+                value={section}
+                onChangeText={setSection}
+                placeholder="e.g. Section A"
                 autoCapitalize="words"
               />
-              
+
               <Text style={styles.label}>Disability Type</Text>
               <TextInput
                 style={styles.input}
@@ -125,7 +217,7 @@ export default function EditProfileScreen() {
                 placeholder="e.g. Special Education"
                 autoCapitalize="words"
               />
-              
+
               <Text style={styles.label}>Grades Handled</Text>
               <TextInput
                 style={styles.input}
@@ -173,4 +265,49 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: "#1AADDC", padding: 16, borderRadius: 12, alignItems: "center" },
   saveBtnDisabled: { backgroundColor: "#9CA3AF" },
   saveBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+
+  // Dropdown field (styled to match the existing TextInput look)
+  dropdownField: {
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dropdownValue: { fontSize: 15, color: "#111827" },
+  dropdownPlaceholder: { fontSize: 15, color: "#9CA3AF" },
+  dropdownChevron: { fontSize: 18, color: "#9CA3AF", fontWeight: "600" },
+
+  // Modal / options list
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: "70%",
+  },
+  modalTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 8, paddingHorizontal: 4 },
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  optionText: { fontSize: 15, color: "#374151" },
+  optionTextSelected: { color: "#1AADDC", fontWeight: "700" },
+  optionCheck: { fontSize: 15, color: "#1AADDC", fontWeight: "700" },
+  modalCancel: { marginTop: 8, paddingVertical: 12, alignItems: "center" },
+  modalCancelText: { fontSize: 14, color: "#6B7280", fontWeight: "600" },
 });
