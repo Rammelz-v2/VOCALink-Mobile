@@ -27,6 +27,13 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return rows;
 }
 
+const REQUEST_TYPE_BY_ICON_ID: Record<string, string> = {
+  medicine: "medication",  // matches mockdata.ts id "medicine" (label "Medicine")
+  toilet:   "bathroom",    // matches mockdata.ts id "toilet" (label "Bathroom")
+  // No dedicated "assistance" icon exists in mockdata.ts yet — add one
+  // there (e.g. id "assistance") and a matching entry here if needed.
+};
+
 // ── Category config ────────────────────────────────────────────────────────────
 const CATEGORIES: { id: AACCategory; label: string; emoji: string; color: string }[] = [
   { id: "all",       label: "All",      emoji: "📋", color: "#475569" },
@@ -50,6 +57,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [sent, setSent]         = useState(false);
+  const [requestSent, setRequestSent] = useState<string | null>(null);
 
   // ── LSTM-style next-icon prediction ───────────────────────────────────────
   const [predictions, setPredictions]       = useState<AACIcon[]>([]);
@@ -90,8 +98,28 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
 
   // Tapping an icon only builds the message locally — nothing is sent to
   // the backend (and therefore nothing appears on the teacher's screen)
-  // until the student taps Send.
+  // until the student taps Send. The exception is request icons
+  // (medication/bathroom/assistance), which fire immediately since they're
+  // urgent and shouldn't wait for a full sentence to be built.
   const handleIconPress = (icon: AACIcon) => {
+    const requestType = REQUEST_TYPE_BY_ICON_ID[icon.id];
+
+    if (requestType) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      axios.post(
+        `${API_BASE_URL}/requests/`,
+        { request_type: requestType },
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then(() => {
+        setRequestSent(icon.label);
+        setTimeout(() => setRequestSent(null), 2500);
+      }).catch(() => {
+        setRequestSent(`${icon.label} — not sent, try again`);
+        setTimeout(() => setRequestSent(null), 2500);
+      });
+      return;
+    }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelected(prev => [...prev, icon]);
   };
@@ -114,23 +142,15 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
 
     const headers = { Authorization: `Bearer ${token}` };
 
-    // Log the whole built message as a single entry — this is the only
-    // network call the AAC board makes per message, and it only fires
-    // once the student has tapped Send.
+    // Log the whole built message as a single entry. /api/logs/ already
+    // looks up the student's active session and attaches session_id itself,
+    // so this is the only network call needed — a second call to
+    // /api/sessions/log/ used to run here too and created a duplicate row
+    // for the same message every time a session was active.
     axios.post(`${API_BASE_URL}/logs/`,
       { icon_id: "message", icon_label: messageText, message: messageText },
       { headers }
     ).catch(() => {});
-
-    // Also log to the active session, if one is running, so the teacher's
-    // session history shows the complete message rather than individual
-    // icon taps.
-    if (sessionCode) {
-      axios.post(`${API_BASE_URL}/sessions/log/`,
-        { session_code: sessionCode, icon_id: "message", icon_label: messageText },
-        { headers }
-      ).catch(() => {});
-    }
 
     setSent(true);
     setTimeout(() => { setSent(false); setSelected([]); }, 2000);
@@ -169,6 +189,13 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
           </TouchableOpacity>
         ) : undefined}
       />
+
+      {/* ── Request confirmation toast ── */}
+      {requestSent && (
+        <View style={s.requestToast}>
+          <Text style={s.requestToastText}>✋ {requestSent}</Text>
+        </View>
+      )}
 
       {/* ── Message builder ── */}
       <View style={s.builder}>
@@ -331,6 +358,14 @@ const s = StyleSheet.create({
     borderRadius: Radius.full, borderWidth: 1, borderColor: "#FCA5A5",
   },
   clearBtnText: { fontSize: FontSize.sm, color: C.redDark, fontWeight: "700" },
+
+  // Request toast
+  requestToast: {
+    marginHorizontal: PAD, marginTop: 10, padding: 12, borderRadius: Radius.md,
+    backgroundColor: "#FDECEC", borderWidth: 1.5, borderColor: "#FCA5A5",
+    alignItems: "center",
+  },
+  requestToastText: { fontSize: FontSize.sm, fontWeight: "700", color: "#B91C1C" },
 
   // Builder
   builder: {
