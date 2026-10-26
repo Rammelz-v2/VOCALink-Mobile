@@ -3,7 +3,9 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,26 +16,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../contexts/AuthContext";
 
-// Preset grade levels for the dropdown. Adjust this list to match what your
-// backend / school actually supports.
+const PURPLE = "#2D226A";
+const ACCENT = "#7C5CFC";
+
 const GRADE_OPTIONS = [
-  "Kindergarten",
-  "Grade 1",
-  "Grade 2",
-  "Grade 3",
-  "Grade 4",
-  "Grade 5",
-  "Grade 6",
-  "Grade 7",
-  "Grade 8",
-  "Grade 9",
-  "Grade 10",
-  "Grade 11",
-  "Grade 12",
+  "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
+  "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9",
+  "Grade 10", "Grade 11", "Grade 12",
 ];
 
-// Splits a stored value like "Grade 10 - Section A" into its two parts so
-// the dropdown and the section input can be pre-filled when editing.
 function parseGradeLevel(value: string): { grade: string; section: string } {
   if (!value) return { grade: "", section: "" };
   const match = value.match(/^(.*?)(?:\s*-\s*Section\s*(.+))?$/i);
@@ -43,271 +34,556 @@ function parseGradeLevel(value: string): { grade: string; section: string } {
   };
 }
 
-// A simple, dependency-free dropdown: a tappable field that opens a modal list.
-const GradeDropdown: React.FC<{
+// ── Focused text input ────────────────────────────────────────────────────────
+const StyledInput: React.FC<{
   value: string;
-  onChange: (value: string) => void;
-}> = ({ value, onChange }) => {
+  onChangeText: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  maxLength?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  keyboardType?: "default" | "phone-pad" | "email-address";
+}> = ({ value, onChangeText, placeholder, multiline, maxLength, autoCapitalize = "sentences", keyboardType = "default" }) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View>
+      <TextInput
+        style={[s.input, focused && s.inputFocused, multiline && s.inputMulti]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#94A3B8"
+        multiline={multiline}
+        maxLength={maxLength}
+        autoCapitalize={autoCapitalize}
+        keyboardType={keyboardType}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        textAlignVertical={multiline ? "top" : "center"}
+      />
+      {maxLength !== undefined && (
+        <Text style={s.charCount}>{value.length} / {maxLength}</Text>
+      )}
+    </View>
+  );
+};
+
+// ── Field wrapper (label + icon + content) ────────────────────────────────────
+const Field: React.FC<{ label: string; icon: string; children: React.ReactNode }> = ({ label, icon, children }) => (
+  <View style={s.field}>
+    <View style={s.fieldLabelRow}>
+      <Text style={s.fieldIcon}>{icon}</Text>
+      <Text style={s.fieldLabel}>{label}</Text>
+    </View>
+    {children}
+  </View>
+);
+
+// ── Read-only locked row ──────────────────────────────────────────────────────
+const LockedField: React.FC<{ icon: string; label: string; value: string }> = ({ icon, label, value }) => (
+  <View style={s.lockedRow}>
+    <View style={s.lockedIconBox}>
+      <Text style={{ fontSize: 16 }}>{icon}</Text>
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={s.lockedLabel}>{label}</Text>
+      <Text style={s.lockedValue} numberOfLines={1}>{value || "—"}</Text>
+    </View>
+    <Text style={s.lockIcon}>🔒</Text>
+  </View>
+);
+
+// ── Bottom-sheet dropdown ─────────────────────────────────────────────────────
+const Dropdown: React.FC<{
+  value: string;
+  placeholder: string;
+  options: string[];
+  onChange: (v: string) => void;
+}> = ({ value, placeholder, options, onChange }) => {
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   return (
     <>
       <TouchableOpacity
-        style={styles.dropdownField}
-        onPress={() => setOpen(true)}
+        style={[s.input, s.dropdownRow, focused && s.inputFocused]}
+        onPress={() => { setFocused(true); setOpen(true); }}
         activeOpacity={0.7}
       >
-        <Text style={value ? styles.dropdownValue : styles.dropdownPlaceholder}>
-          {value || "Select grade level"}
+        <Text style={[value ? s.dropdownValue : s.dropdownPlaceholder, { flex: 1 }]}>
+          {value || placeholder}
         </Text>
-        <Text style={styles.dropdownChevron}>⌄</Text>
+        <Text style={s.chevron}>▾</Text>
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
-          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Select Grade Level</Text>
-            <ScrollView style={{ maxHeight: 360 }}>
-              {GRADE_OPTIONS.map((option) => (
+      <Modal
+        visible={open}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setOpen(false); setFocused(false); }}
+      >
+        <View style={s.sheet}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => { setOpen(false); setFocused(false); }}
+          />
+          <View style={s.sheetCard}>
+            <View style={s.sheetHandle} />
+            <Text style={s.sheetTitle}>{placeholder}</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
+              {options.map(opt => (
                 <TouchableOpacity
-                  key={option}
-                  style={styles.optionRow}
-                  onPress={() => {
-                    onChange(option);
-                    setOpen(false);
-                  }}
+                  key={opt}
+                  style={[s.sheetOption, opt === value && s.sheetOptionActive]}
+                  onPress={() => { onChange(opt); setOpen(false); setFocused(false); }}
+                  activeOpacity={0.7}
                 >
-                  <Text style={[styles.optionText, option === value && styles.optionTextSelected]}>
-                    {option}
+                  <Text style={[s.sheetOptionText, opt === value && s.sheetOptionTextActive]}>
+                    {opt}
                   </Text>
-                  {option === value && <Text style={styles.optionCheck}>✓</Text>}
+                  {opt === value && (
+                    <Text style={{ fontSize: 16, color: ACCENT, fontWeight: "800" }}>✓</Text>
+                  )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={styles.modalCancel} onPress={() => setOpen(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </>
   );
 };
 
+// ── Section divider title ─────────────────────────────────────────────────────
+const SectionTitle: React.FC<{ title: string }> = ({ title }) => (
+  <Text style={s.sectionTitle}>{title}</Text>
+);
+
+// ── Main screen ───────────────────────────────────────────────────────────────
 export default function EditProfileScreen() {
   const { user, updateProfile } = useAuth();
-
   const isTeacher = user?.status === "TEACHER";
 
-  // Shared Fields
-  const [firstName, setFirstName] = useState(user?.first_name ?? "");
-  const [lastName, setLastName] = useState(user?.last_name ?? "");
+  const displayName = user?.first_name
+    ? `${user.first_name} ${user.last_name ?? ""}`.trim()
+    : user?.username ?? "User";
+  const initials = displayName
+    .split(" ")
+    .map((w: string) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
-  // Student-only Fields — grade level is now split into a dropdown (grade)
-  // and a free-text section, then recombined into the same "grade_level"
-  // string the backend already expects.
-  const initialGrade = parseGradeLevel(user?.grade_level ?? "");
-  const [gradeLevel, setGradeLevel] = useState(initialGrade.grade);
-  const [section, setSection] = useState(initialGrade.section);
+  // ── Shared state ──────────────────────────────────────────────────────────
+  const [firstName, setFirstName]   = useState(user?.first_name ?? "");
+  const [lastName,  setLastName]    = useState(user?.last_name  ?? "");
+  const [bio,       setBio]         = useState(user?.bio        ?? "");
+
+  // ── Student state ─────────────────────────────────────────────────────────
+  const parsed = parseGradeLevel(user?.grade_level ?? "");
+  const [gradeLevel,    setGradeLevel]    = useState(parsed.grade);
+  const [section,       setSection]       = useState(parsed.section);
   const [disabilityType, setDisabilityType] = useState(user?.disability_type ?? "");
 
-  // Teacher-only Fields
-  const [department, setDepartment] = useState(user?.department ?? "");
-  const [gradeHandled, setGradeHandled] = useState(user?.grade_handled ?? "");
+  // ── Teacher state ─────────────────────────────────────────────────────────
+  const [displayNameT,  setDisplayNameT]  = useState(user?.display_name   ?? "");
+  const [contactNumber, setContactNumber] = useState(user?.contact_number ?? "");
+  const [roomSection,   setRoomSection]   = useState(user?.room_section   ?? "");
+  const [department,    setDepartment]    = useState(user?.department     ?? "");
+  const [gradeHandled,  setGradeHandled]  = useState(user?.grade_handled  ?? "");
+  const [organization,  setOrganization]  = useState(user?.organization   ?? "");
 
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload: any = {
-        first_name: firstName.trim() || undefined,
-        last_name: lastName.trim() || undefined,
+      const payload: Parameters<typeof updateProfile>[0] = {
+        first_name: firstName.trim()  || undefined,
+        last_name:  lastName.trim()   || undefined,
+        bio:        bio.trim()        || undefined,
       };
 
       if (isTeacher) {
-        payload.department = department.trim() || undefined;
-        payload.grade_handled = gradeHandled.trim() || undefined;
+        payload.display_name   = displayNameT.trim()  || undefined;
+        payload.contact_number = contactNumber.trim() || undefined;
+        payload.room_section   = roomSection.trim()   || undefined;
+        payload.department     = department.trim()    || undefined;
+        payload.grade_handled  = gradeHandled.trim()  || undefined;
+        payload.organization   = organization.trim()  || undefined;
       } else {
-        const combinedGrade = section.trim()
+        const combined = section.trim()
           ? `${gradeLevel} - Section ${section.trim()}`
           : gradeLevel;
-        payload.grade_level = combinedGrade.trim() || undefined;
+        payload.grade_level    = combined.trim()       || undefined;
         payload.disability_type = disabilityType.trim() || undefined;
       }
 
-      // Same updateProfile call as before — still hits your existing backend endpoint.
       await updateProfile(payload);
-      Alert.alert("Saved", "Your profile has been updated.");
-      router.back();
+      Alert.alert("Saved ✓", "Your profile has been updated.", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch {
-      Alert.alert("Error", "Could not save changes. Please try again.");
+      Alert.alert("Error", "Could not save changes. Please check your connection and try again.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Edit Profile</Text>
-          <View style={{ width: 60 }} />
-        </View>
+    <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={s.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
 
-        <View style={styles.form}>
-          <Text style={styles.sectionLabel}>Personal Info</Text>
+          {/* ── HERO HEADER ───────────────────────────────────────── */}
+          <View style={s.hero}>
+            <View style={s.heroAccentBar} />
 
-          <Text style={styles.label}>First Name</Text>
-          <TextInput
-            style={styles.input}
-            value={firstName}
-            onChangeText={setFirstName}
-            placeholder="Enter your first name"
-            autoCapitalize="words"
-          />
+            <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
+              <Text style={s.backText}>← Back</Text>
+            </TouchableOpacity>
 
-          <Text style={styles.label}>Last Name</Text>
-          <TextInput
-            style={styles.input}
-            value={lastName}
-            onChangeText={setLastName}
-            placeholder="Enter your last name"
-            autoCapitalize="words"
-          />
+            <View style={s.avatarSection}>
+              <View style={s.avatarRing}>
+                <View style={s.avatar}>
+                  <Text style={s.avatarInitials}>{initials}</Text>
+                </View>
+              </View>
+              <Text style={s.heroName}>{displayName}</Text>
+              <Text style={s.heroUsername}>@{user?.username}</Text>
+              <View style={s.roleBadge}>
+                <Text style={s.roleBadgeText}>
+                  {isTeacher ? "🍎  Teacher Account" : "🎓  Student Account"}
+                </Text>
+              </View>
+            </View>
+          </View>
 
-          <Text style={styles.sectionLabel}>
-            {isTeacher ? "Professional Details" : "Student Details"}
-          </Text>
+          {/* ── FORM BODY ──────────────────────────────────────────── */}
+          <View style={s.formBody}>
 
-          {!isTeacher ? (
-            <>
-              <Text style={styles.label}>Grade Level</Text>
-              <GradeDropdown value={gradeLevel} onChange={setGradeLevel} />
+            {/* ── Personal Info ──────────────────────────────── */}
+            <View style={s.group}>
+              <SectionTitle title="Personal Info" />
 
-              <Text style={styles.label}>Section</Text>
-              <TextInput
-                style={styles.input}
-                value={section}
-                onChangeText={setSection}
-                placeholder="e.g. Section A"
-                autoCapitalize="words"
-              />
+              <Field label="First Name" icon="✏️">
+                <StyledInput
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="Your first name"
+                  autoCapitalize="words"
+                />
+              </Field>
 
-              <Text style={styles.label}>Disability Type</Text>
-              <TextInput
-                style={styles.input}
-                value={disabilityType}
-                onChangeText={setDisabilityType}
-                placeholder="e.g. Nonverbal, Speech delay"
-                autoCapitalize="sentences"
-              />
-            </>
-          ) : (
-             <>
-              <Text style={styles.label}>Department</Text>
-              <TextInput
-                style={styles.input}
-                value={department}
-                onChangeText={setDepartment}
-                placeholder="e.g. Special Education"
-                autoCapitalize="words"
-              />
+              <Field label="Last Name" icon="✏️">
+                <StyledInput
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Your last name"
+                  autoCapitalize="words"
+                />
+              </Field>
 
-              <Text style={styles.label}>Grades Handled</Text>
-              <TextInput
-                style={styles.input}
-                value={gradeHandled}
-                onChangeText={setGradeHandled}
-                placeholder="e.g. Grades 7 to 10"
-                autoCapitalize="words"
-              />
-            </>
-          )}
+              <Field label="Bio" icon="💬">
+                <StyledInput
+                  value={bio}
+                  onChangeText={setBio}
+                  placeholder="A short bio about yourself…"
+                  multiline
+                  maxLength={200}
+                />
+              </Field>
+            </View>
 
-          <Text style={styles.readOnlyNote}>
-            Username and email cannot be changed here.
-          </Text>
+            {/* ── Account — read-only ─────────────────────────── */}
+            <View style={s.group}>
+              <SectionTitle title="Account" />
+              <View style={s.lockedCard}>
+                <LockedField icon="🏷️" label="Username" value={user?.username ?? ""} />
+                <View style={s.lockedDivider} />
+                <LockedField icon="📧" label="Email" value={user?.email ?? ""} />
+              </View>
+              <Text style={s.lockedNote}>
+                Username and email can only be changed by an administrator.
+              </Text>
+            </View>
 
-          <TouchableOpacity
-            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
+            {/* ── Role-specific fields ────────────────────────── */}
+            {!isTeacher ? (
+              <View style={s.group}>
+                <SectionTitle title="Student Details" />
+
+                <Field label="Grade Level" icon="📚">
+                  <Dropdown
+                    value={gradeLevel}
+                    placeholder="Select grade level"
+                    options={GRADE_OPTIONS}
+                    onChange={setGradeLevel}
+                  />
+                </Field>
+
+                <Field label="Section" icon="🔢">
+                  <StyledInput
+                    value={section}
+                    onChangeText={setSection}
+                    placeholder="e.g. Section A"
+                    autoCapitalize="words"
+                  />
+                </Field>
+
+                <Field label="Disability / Communication Type" icon="♿">
+                  <StyledInput
+                    value={disabilityType}
+                    onChangeText={setDisabilityType}
+                    placeholder="e.g. Nonverbal, Speech delay, ASD"
+                    autoCapitalize="sentences"
+                  />
+                </Field>
+              </View>
             ) : (
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+              <View style={s.group}>
+                <SectionTitle title="Professional Details" />
+
+                <Field label="Display Name" icon="📛">
+                  <StyledInput
+                    value={displayNameT}
+                    onChangeText={setDisplayNameT}
+                    placeholder="Name shown to students"
+                    autoCapitalize="words"
+                  />
+                </Field>
+
+                <Field label="Department" icon="🏢">
+                  <StyledInput
+                    value={department}
+                    onChangeText={setDepartment}
+                    placeholder="e.g. Special Education"
+                    autoCapitalize="words"
+                  />
+                </Field>
+
+                <Field label="Organization / School" icon="🏫">
+                  <StyledInput
+                    value={organization}
+                    onChangeText={setOrganization}
+                    placeholder="School or institution name"
+                    autoCapitalize="words"
+                  />
+                </Field>
+
+                <Field label="Grades Handled" icon="📋">
+                  <StyledInput
+                    value={gradeHandled}
+                    onChangeText={setGradeHandled}
+                    placeholder="e.g. Grades 7 to 10"
+                    autoCapitalize="words"
+                  />
+                </Field>
+
+                <Field label="Room / Section" icon="🚪">
+                  <StyledInput
+                    value={roomSection}
+                    onChangeText={setRoomSection}
+                    placeholder="e.g. Room 204 – Section B"
+                    autoCapitalize="words"
+                  />
+                </Field>
+
+                <Field label="Contact Number" icon="📱">
+                  <StyledInput
+                    value={contactNumber}
+                    onChangeText={setContactNumber}
+                    placeholder="+63 9XX XXX XXXX"
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                  />
+                </Field>
+              </View>
             )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+
+            {/* ── Save button ─────────────────────────────────── */}
+            <TouchableOpacity
+              style={[s.saveBtn, saving && s.saveBtnOff]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              {saving
+                ? <ActivityIndicator color="#fff" />
+                : <>
+                    <Text style={s.saveBtnIcon}>💾</Text>
+                    <Text style={s.saveBtnText}>Save Changes</Text>
+                  </>
+              }
+            </TouchableOpacity>
+
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F3F4F6" },
-  container: { padding: 20, paddingBottom: 48 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 24 },
-  backBtn: { padding: 8 },
-  backText: { fontSize: 15, color: "#1AADDC", fontWeight: "600" },
-  title: { fontSize: 20, fontWeight: "800", color: "#111827" },
-  form: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  sectionLabel: { fontSize: 13, fontWeight: "700", color: "#1AADDC", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 14, marginTop: 8 },
-  label: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 6 },
-  input: { backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, padding: 14, fontSize: 15, color: "#111827", marginBottom: 18 },
-  readOnlyNote: { fontSize: 12, color: "#9CA3AF", textAlign: "center", marginTop: 4, marginBottom: 24 },
-  saveBtn: { backgroundColor: "#1AADDC", padding: 16, borderRadius: 12, alignItems: "center" },
-  saveBtnDisabled: { backgroundColor: "#9CA3AF" },
-  saveBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+const s = StyleSheet.create({
+  safe:   { flex: 1, backgroundColor: "#F4F2FF" },
+  scroll: { paddingBottom: 52 },
 
-  // Dropdown field (styled to match the existing TextInput look)
-  dropdownField: {
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  // ── Hero header ────────────────────────────────────────────────────────────
+  hero: { backgroundColor: PURPLE, paddingBottom: 36, overflow: "hidden" },
+  heroAccentBar: { height: 3, backgroundColor: ACCENT },
+  backBtn: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4, alignSelf: "flex-start" },
+  backText: { fontSize: 15, fontWeight: "600", color: "rgba(255,255,255,0.75)" },
+
+  avatarSection: { alignItems: "center", paddingTop: 10 },
+  avatarRing: {
+    width: 106, height: 106, borderRadius: 53,
+    backgroundColor: "rgba(124,92,252,0.30)",
+    alignItems: "center", justifyContent: "center",
+    marginBottom: 14,
   },
-  dropdownValue: { fontSize: 15, color: "#111827" },
-  dropdownPlaceholder: { fontSize: 15, color: "#9CA3AF" },
-  dropdownChevron: { fontSize: 18, color: "#9CA3AF", fontWeight: "600" },
+  avatar: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: ACCENT,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: ACCENT, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.55, shadowRadius: 18, elevation: 12,
+  },
+  avatarInitials: { fontSize: 34, fontWeight: "900", color: "#fff", letterSpacing: -1 },
+  heroName:     { fontSize: 22, fontWeight: "800", color: "#fff", letterSpacing: -0.5 },
+  heroUsername: { fontSize: 13, color: "rgba(255,255,255,0.50)", marginTop: 3, fontWeight: "500" },
+  roleBadge: {
+    marginTop: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 999, paddingHorizontal: 16, paddingVertical: 6,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.20)",
+  },
+  roleBadgeText: { fontSize: 13, fontWeight: "700", color: "rgba(255,255,255,0.90)" },
 
-  // Modal / options list
-  modalOverlay: {
+  // ── Form body ──────────────────────────────────────────────────────────────
+  formBody: { paddingHorizontal: 16, paddingTop: 24 },
+
+  group: { marginBottom: 28 },
+
+  sectionTitle: {
+    fontSize: 11, fontWeight: "800", color: ACCENT,
+    textTransform: "uppercase", letterSpacing: 1.4,
+    borderLeftWidth: 3, borderLeftColor: ACCENT,
+    paddingLeft: 10, marginBottom: 18,
+  },
+
+  // ── Input field ────────────────────────────────────────────────────────────
+  field:         { marginBottom: 14 },
+  fieldLabelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 7 },
+  fieldIcon:     { fontSize: 14 },
+  fieldLabel:    { fontSize: 13, fontWeight: "700", color: "#334155" },
+
+  input: {
+    backgroundColor: "#fff",
+    borderWidth: 1.5, borderColor: "#E2E8F0",
+    borderRadius: 14,
+    paddingHorizontal: 15, paddingVertical: 13,
+    fontSize: 15, color: "#0F172A",
+    shadowColor: "#2D226A",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  inputFocused: { borderColor: ACCENT, borderWidth: 2 },
+  inputMulti:   { minHeight: 100, paddingTop: 13 },
+  charCount:    { fontSize: 11, color: "#94A3B8", textAlign: "right", marginTop: 4, paddingRight: 2 },
+
+  // ── Dropdown ───────────────────────────────────────────────────────────────
+  dropdownRow:         { flexDirection: "row", alignItems: "center" },
+  dropdownValue:       { fontSize: 15, color: "#0F172A" },
+  dropdownPlaceholder: { fontSize: 15, color: "#94A3B8" },
+  chevron:             { fontSize: 13, color: "#94A3B8", marginLeft: 8 },
+
+  // ── Bottom sheet ───────────────────────────────────────────────────────────
+  sheet: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "center",
-    paddingHorizontal: 24,
+    backgroundColor: "rgba(0,0,0,0.48)",
+    justifyContent: "flex-end",
   },
-  modalCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    maxHeight: "70%",
+  sheetCard: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 36,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.14, shadowRadius: 24, elevation: 24,
   },
-  modalTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 8, paddingHorizontal: 4 },
-  optionRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  sheetHandle: {
+    width: 44, height: 5, borderRadius: 999,
+    backgroundColor: "#E2E8F0",
+    alignSelf: "center", marginBottom: 18,
+  },
+  sheetTitle: {
+    fontSize: 16, fontWeight: "800", color: "#0F172A",
+    marginBottom: 4, paddingHorizontal: 4,
+  },
+  sheetOption: {
+    flexDirection: "row", alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    paddingVertical: 15, paddingHorizontal: 8,
+    borderBottomWidth: 1, borderBottomColor: "#F1F5F9",
   },
-  optionText: { fontSize: 15, color: "#374151" },
-  optionTextSelected: { color: "#1AADDC", fontWeight: "700" },
-  optionCheck: { fontSize: 15, color: "#1AADDC", fontWeight: "700" },
-  modalCancel: { marginTop: 8, paddingVertical: 12, alignItems: "center" },
-  modalCancelText: { fontSize: 14, color: "#6B7280", fontWeight: "600" },
+  sheetOptionActive: {
+    backgroundColor: "rgba(124,92,252,0.07)",
+    borderRadius: 10, marginHorizontal: -4, paddingHorizontal: 12,
+  },
+  sheetOptionText:       { fontSize: 15, color: "#374151", fontWeight: "500" },
+  sheetOptionTextActive: { color: ACCENT, fontWeight: "700" },
+
+  // ── Locked (read-only) card ────────────────────────────────────────────────
+  lockedCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16, borderWidth: 1.5, borderColor: "#E2E8F0",
+    overflow: "hidden",
+    shadowColor: "#2D226A",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  lockedRow: {
+    flexDirection: "row", alignItems: "center",
+    gap: 12, paddingHorizontal: 16, paddingVertical: 14,
+  },
+  lockedIconBox: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: "#F4F2FF",
+    alignItems: "center", justifyContent: "center",
+  },
+  lockedLabel: {
+    fontSize: 10, fontWeight: "700", color: "#94A3B8",
+    textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3,
+  },
+  lockedValue: { fontSize: 15, fontWeight: "700", color: "#0F172A" },
+  lockIcon:    { fontSize: 13, opacity: 0.35 },
+  lockedDivider: { height: 1, backgroundColor: "#F1F5F9", marginHorizontal: 16 },
+  lockedNote: {
+    fontSize: 12, color: "#94A3B8",
+    marginTop: 8, paddingHorizontal: 4,
+    lineHeight: 18,
+  },
+
+  // ── Save button ────────────────────────────────────────────────────────────
+  saveBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10,
+    backgroundColor: ACCENT,
+    paddingVertical: 18, borderRadius: 18,
+    marginTop: 4,
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.42, shadowRadius: 16, elevation: 10,
+  },
+  saveBtnOff:  { backgroundColor: "#94A3B8", shadowOpacity: 0 },
+  saveBtnIcon: { fontSize: 20 },
+  saveBtnText: { fontSize: 17, fontWeight: "800", color: "#fff", letterSpacing: 0.3 },
 });

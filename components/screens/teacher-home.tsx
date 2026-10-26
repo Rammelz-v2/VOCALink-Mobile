@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import {
   ScrollView, StyleSheet, Text, TouchableOpacity,
-  View, Alert, ActivityIndicator,
+  View, Alert, ActivityIndicator, Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import axios from "axios";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../constants/api";
@@ -91,24 +91,50 @@ export default function TeacherHome({ setActive }: Props) {
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
-        <LinearGradient
-          colors={isSessionActive
-            ? ["#065F46", "#047857", "#10B981"]
-            : ["#312E81", "#4338CA", "#6366F1"]}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={s.hero}
-        >
-          <Badge color={isSessionActive ? "teal" : "gray"} style={{ marginBottom: 10 }}>
+        <View style={[s.hero, { backgroundColor: isSessionActive ? "#064E3B" : "#2D226A" }]}>
+          <View style={s.heroAccent} />
+          <Badge color={isSessionActive ? "green" : "gray"} style={{ marginBottom: 10 }}>
             {isSessionActive ? "Class in Session" : "Offline"}
           </Badge>
           <Text style={s.heroGreeting}>Welcome back,</Text>
           <Text style={s.heroName}>Teacher {displayName} 🍎</Text>
           <Text style={s.heroSub}>
             {isSessionActive
-              ? `Session Code: ${sessionCode}`
+              ? "Share the code below with your students"
               : "Start a session to connect with your students."}
           </Text>
-        </LinearGradient>
+        </View>
+
+        {/* ── Session code card ── */}
+        {isSessionActive && sessionCode && (
+          <Animated.View entering={FadeInDown.duration(350).springify()} style={s.codeCard}>
+            <View style={s.codeCardTop}>
+              <View>
+                <Text style={s.codeCardLabel}>SESSION CODE</Text>
+                <Text style={s.codeCardHint}>Students enter this to join your class</Text>
+              </View>
+              <TouchableOpacity
+                style={s.shareBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  Share.share({
+                    message: `Join my VOCALink class!\n\nSession Code: ${sessionCode}\n\nOpen the VOCALink app and enter this code to connect.`,
+                  });
+                }}
+              >
+                <Text style={s.shareBtnText}>Share  ↗</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={s.codeBoxRow}>
+              {sessionCode.split("").map((char, i) => (
+                <View key={i} style={s.codeBox}>
+                  <Text style={s.codeBoxChar}>{char}</Text>
+                </View>
+              ))}
+            </View>
+          </Animated.View>
+        )}
 
         {/* ── Big start / return button ── */}
         <View style={s.section}>
@@ -179,17 +205,27 @@ export default function TeacherHome({ setActive }: Props) {
 const s = StyleSheet.create({
   safe:            { flex: 1, backgroundColor: C.bg },
   scroll:          { paddingBottom: 40 },
-  hero:            { padding: Spacing.xl, paddingTop: Spacing.xxl, paddingBottom: Spacing.xxl },
+  hero:            { padding: Spacing.xl, paddingTop: Spacing.xxl, paddingBottom: Spacing.xxl, overflow: "hidden" },
+  heroAccent:      { position: "absolute", top: 0, left: 0, right: 0, height: 3, backgroundColor: "#7C5CFC" },
   heroGreeting:    { fontSize: FontSize.base, color: "rgba(255,255,255,0.8)", fontWeight: "500", marginTop: 4 },
   heroName:        { fontSize: FontSize.xxl, color: "#FFF", fontWeight: "800", letterSpacing: -1, marginTop: 4 },
   heroSub:         { fontSize: FontSize.sm, color: "rgba(255,255,255,0.9)", marginTop: 8, fontWeight: "600" },
   section:         { padding: Spacing.lg, gap: 14 },
-  sectionTitle:    { fontSize: FontSize.lg, fontWeight: "800", color: C.text, letterSpacing: -0.5 },
+  sectionTitle:    { fontSize: FontSize.lg, fontWeight: "800", color: C.text, letterSpacing: -0.5, borderLeftWidth: 3, borderLeftColor: "#7C5CFC", paddingLeft: 10 },
   startBtn:        { flexDirection: "row", alignItems: "center", gap: 16, backgroundColor: C.teal, borderRadius: Radius.lg, padding: Spacing.lg, ...Shadow.md },
   startBtnActive:  { backgroundColor: "#047857" },
   startBtnEmoji:   { fontSize: 32 },
   startBtnLabel:   { fontSize: FontSize.lg, fontWeight: "800", color: C.white },
   startBtnSub:     { fontSize: FontSize.xs, color: "rgba(255,255,255,0.8)", marginTop: 4, fontWeight: "500" },
+  codeCard:        { marginHorizontal: Spacing.lg, marginTop: -16, backgroundColor: "#FFF", borderRadius: Radius.xl, padding: Spacing.lg, ...Shadow.lg, borderWidth: 1, borderColor: "rgba(124,92,252,0.18)" },
+  codeCardTop:     { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: Spacing.md },
+  codeCardLabel:   { fontSize: FontSize.xs, fontWeight: "800", color: "#7C5CFC", letterSpacing: 1.5 },
+  codeCardHint:    { fontSize: FontSize.xs, color: C.text3, marginTop: 3, fontWeight: "500" },
+  shareBtn:        { backgroundColor: "#7C5CFC", borderRadius: Radius.full, paddingHorizontal: 16, paddingVertical: 8 },
+  shareBtnText:    { fontSize: FontSize.sm, fontWeight: "700", color: "#FFF" },
+  codeBoxRow:      { flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 },
+  codeBox:         { flex: 1, aspectRatio: 1, maxWidth: 48, backgroundColor: "#F4F2FF", borderRadius: Radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(124,92,252,0.3)" },
+  codeBoxChar:     { fontSize: 22, fontWeight: "900", color: "#2D226A", letterSpacing: 0 },
   actionGrid:      { flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "space-between" },
   toolCard:        { width: "48%", backgroundColor: C.white, borderRadius: Radius.lg, padding: Spacing.md, alignItems: "flex-start", borderWidth: 1, borderColor: C.gray2, ...Shadow.sm },
   toolCardDisabled:{ opacity: 0.45 },

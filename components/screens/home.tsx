@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
+} from "react-native";
+import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import axios from "axios";
@@ -15,6 +19,10 @@ import TeacherHome from "./teacher-home";
 interface HomeProps {
   setActive: (tab: TabName) => void;
   sessionCode?: string | null;
+  joinSession?: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  leaveSession?: () => void;
+  joining?: boolean;
+  joinError?: string | null;
 }
 
 // A big tappable dashboard tile — replaces the old plain list row.
@@ -79,51 +87,32 @@ const TIPS = [
   "Ask your teacher to start a session if you don't see Live Captions.",
 ];
 
-const Home: React.FC<HomeProps> = ({ setActive, sessionCode: sessionCodeProp }) => {
+const Home: React.FC<HomeProps> = ({
+  setActive,
+  sessionCode,
+  joinSession,
+  leaveSession,
+  joining = false,
+  joinError,
+}) => {
   const { user, token } = useAuth();
-  const [activeSessionCode, setActiveSessionCode] = useState<string | null>(null);
+  const [codeInput, setCodeInput] = useState("");
   const [recentActivity, setRecentActivity] = useState<
     { id: string | number; emoji: string; text: string; time: string }[]
   >([]);
 
   useEffect(() => {
     if (!token || user?.status !== "STUDENT") return;
-
-    const checkSession = async () => {
-      try {
-        const res = await axios.get(`${API_BASE_URL}/sessions/student`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.data.active) {
-          setActiveSessionCode(res.data.session_code);
-        } else {
-          setActiveSessionCode(null);
-        }
-      } catch (e) {
-        console.log("Could not check session");
-      }
-    };
-
-    checkSession();
-    const interval = setInterval(checkSession, 5000);
-    return () => clearInterval(interval);
-  }, [token, user]);
-
-  useEffect(() => {
-    if (!token || user?.status !== "STUDENT") return;
-
     const fetchActivity = async () => {
       try {
         const res = await axios.get(`${API_BASE_URL}/activity/recent`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setRecentActivity(res.data?.items ?? []);
-      } catch (e) {
-        // Endpoint may not exist yet — fail quietly and show the empty state.
+      } catch {
         setRecentActivity([]);
       }
     };
-
     fetchActivity();
   }, [token, user]);
 
@@ -148,64 +137,132 @@ const Home: React.FC<HomeProps> = ({ setActive, sessionCode: sessionCodeProp }) 
         <ScreenHeader
           title={`${greeting}, ${displayName} 👋`}
           subtitle="VocaLink — Your voice matters"
-          right={<Badge color="teal">Online</Badge>}
+          right={<Badge color="green">Online</Badge>}
         />
 
-        {/* ACTIVE SESSION BANNER */}
-        {activeSessionCode && (
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              setActive("livecc");
-            }}
-            style={styles.activeClassBanner}
-          >
-            <View style={styles.activeClassTop}>
-              <Text style={styles.activeClassIcon}>🚨</Text>
+        {/* SESSION — join form or active banner */}
+        {!sessionCode ? (
+          /* ── Join form ──────────────────────────────────────────────── */
+          <Animated.View entering={FadeIn.duration(350)} style={styles.joinCard}>
+            <View style={styles.joinHeader}>
+              <View style={styles.joinIconWrap}>
+                <Text style={{ fontSize: 26 }}>📡</Text>
+              </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.activeClassTitle}>Class is Live!</Text>
-                <Text style={styles.activeClassSub}>Your teacher has started a session.</Text>
+                <Text style={styles.joinTitle}>Join a Class Session</Text>
+                <Text style={styles.joinSub}>Enter the code your teacher shared</Text>
               </View>
             </View>
-            <View style={styles.activeClassBtn}>
-              <Text style={styles.activeClassBtnText}>Join Live CC Room</Text>
-            </View>
-          </TouchableOpacity>
+
+            <TextInput
+              style={styles.joinInput}
+              value={codeInput}
+              onChangeText={(t) => setCodeInput(t.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+              placeholder="e.g. ABC123"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="characters"
+              maxLength={8}
+              autoCorrect={false}
+            />
+
+            {joinError ? (
+              <View style={styles.joinErrorRow}>
+                <Text style={styles.joinError}>⚠️  {joinError}</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.joinBtn, (!codeInput.trim() || joining) && styles.joinBtnOff]}
+              disabled={!codeInput.trim() || joining}
+              activeOpacity={0.85}
+              onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                const result = await joinSession?.(codeInput);
+                if (result?.ok) {
+                  setCodeInput("");
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+              }}
+            >
+              {joining
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.joinBtnText}>Join Session →</Text>
+              }
+            </TouchableOpacity>
+          </Animated.View>
+        ) : (
+          /* ── Active session banner ──────────────────────────────────── */
+          <Animated.View entering={FadeIn.duration(350)}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setActive("livecc");
+              }}
+              style={styles.activeClassBanner}
+            >
+              <View style={styles.activeClassTop}>
+                <Text style={styles.activeClassIcon}>🟢</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activeClassTitle}>Session Active!</Text>
+                  <Text style={styles.activeClassSub}>Code: {sessionCode}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation?.(); leaveSession?.(); }}
+                  style={styles.leaveBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.leaveBtnText}>Leave</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.activeClassBtn}>
+                <Text style={styles.activeClassBtnText}>Go to Live CC Room →</Text>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
         )}
 
         {/* OVERVIEW STRIP */}
         <View style={styles.statsRow}>
-          <StatCard emoji="📅" value={shortGrade(user?.grade_level)} label="Grade" />
-          <StatCard emoji="🔔" value={activeSessionCode ? "Live" : "None"} label="Session" />
-          <StatCard emoji="🟢" value="Online" label="Status" />
+          {[
+            { emoji: "📅", value: shortGrade(user?.grade_level), label: "Grade" },
+            { emoji: "🔔", value: sessionCode ? "Live" : "None", label: "Session" },
+            { emoji: "🟢", value: "Online", label: "Status" },
+          ].map((stat, i) => (
+            <Animated.View key={stat.label} entering={FadeInDown.delay(i * 70).springify()} style={{ flex: 1 }}>
+              <StatCard emoji={stat.emoji} value={stat.value} label={stat.label} />
+            </Animated.View>
+          ))}
         </View>
 
         {/* MAIN DASHBOARD ACTIONS */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Dashboard</Text>
           <View style={styles.tileGrid}>
-            <DashboardTile
-              emoji="🗣"
-              label="AAC Board"
-              sub="Tap icons to communicate"
-              color={C.purple}
-              bg={C.purpleLight}
-              onPress={() => setActive("board")}
-            />
-            <DashboardTile
-              emoji="📝"
-              label="Live Captions"
-              sub="See what teacher is saying"
-              color="#22C55E"
-              bg="#DCFCE7"
-              onPress={() => setActive("livecc")}
-            />
+            {[
+              { emoji: "🗣", label: "AAC Board", sub: "Tap icons to communicate", color: C.purple, bg: C.purpleLight, tab: "board" as const },
+              { emoji: "📝", label: "Live Captions", sub: "See what teacher is saying", color: "#0E8DB8", bg: "#E0F5FC", tab: "livecc" as const },
+            ].map((tile, i) => (
+              <Animated.View
+                key={tile.tab}
+                entering={FadeInDown.delay(150 + i * 80).springify()}
+                style={{ flexBasis: "47%", flexGrow: 1 }}
+              >
+                <DashboardTile
+                  emoji={tile.emoji}
+                  label={tile.label}
+                  sub={tile.sub}
+                  color={tile.color}
+                  bg={tile.bg}
+                  onPress={() => setActive(tile.tab)}
+                />
+              </Animated.View>
+            ))}
           </View>
         </View>
 
         {/* RECENT ACTIVITY */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
           <View style={styles.activityCard}>
             {recentActivity.length > 0 ? (
@@ -219,10 +276,10 @@ const Home: React.FC<HomeProps> = ({ setActive, sessionCode: sessionCodeProp }) 
               </View>
             )}
           </View>
-        </View>
+        </Animated.View>
 
         {/* TIP OF THE DAY */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(380).springify()} style={styles.section}>
           <View style={styles.tipCard}>
             <Text style={styles.tipEmoji}>💡</Text>
             <View style={{ flex: 1 }}>
@@ -232,10 +289,10 @@ const Home: React.FC<HomeProps> = ({ setActive, sessionCode: sessionCodeProp }) 
               </Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         {/* INFO CARD */}
-        <View style={[styles.section, styles.infoCard]}>
+        <Animated.View entering={FadeInDown.delay(450).springify()} style={[styles.section, styles.infoCard]}>
           <Text style={styles.infoTitle}>My Info</Text>
           {[
             { icon: "👤", lbl: "Name", val: displayName },
@@ -248,7 +305,7 @@ const Home: React.FC<HomeProps> = ({ setActive, sessionCode: sessionCodeProp }) 
               <Text style={styles.infoVal}>{r.val}</Text>
             </View>
           ))}
-        </View>
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -258,6 +315,54 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: { paddingBottom: 40 },
 
+  // ── Join form ──────────────────────────────────────────────────────────────
+  joinCard: {
+    margin: Spacing.lg,
+    backgroundColor: C.white,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: "rgba(124,92,252,0.18)",
+    ...Shadow.md,
+    shadowColor: "#2D226A",
+  },
+  joinHeader: { flexDirection: "row", alignItems: "center", gap: 14 },
+  joinIconWrap: {
+    width: 52, height: 52, borderRadius: Radius.lg,
+    backgroundColor: C.purpleLight,
+    alignItems: "center", justifyContent: "center",
+  },
+  joinTitle: { fontSize: FontSize.lg, fontWeight: "800", color: C.text },
+  joinSub:   { fontSize: FontSize.xs, color: C.text3, fontWeight: "500", marginTop: 3 },
+  joinInput: {
+    backgroundColor: "#F4F2FF",
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: "rgba(124,92,252,0.3)",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#2D226A",
+    letterSpacing: 4,
+    textAlign: "center",
+  },
+  joinErrorRow: { alignItems: "center" },
+  joinError:    { fontSize: FontSize.sm, color: "#EF4444", fontWeight: "600", textAlign: "center" },
+  joinBtn: {
+    backgroundColor: "#7C5CFC",
+    borderRadius: Radius.full,
+    paddingVertical: 14,
+    alignItems: "center",
+    ...Shadow.sm,
+  },
+  joinBtnOff: { backgroundColor: "#C4B5FD", ...Shadow.sm },
+  joinBtnText: { fontSize: FontSize.base, fontWeight: "800", color: C.white },
+
+  // ── Active session banner ──────────────────────────────────────────────────
+  leaveBtn:     { backgroundColor: "rgba(255,255,255,0.25)", borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6 },
+  leaveBtnText: { fontSize: FontSize.xs, fontWeight: "700", color: C.white },
   activeClassBanner: { margin: Spacing.lg, padding: Spacing.lg, backgroundColor: "#10B981", borderRadius: Radius.lg, ...Shadow.md },
   activeClassTop: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
   activeClassIcon: { fontSize: 28 },
@@ -278,7 +383,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.white,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: C.gray2,
+    borderColor: "rgba(124,92,252,0.18)",
     paddingVertical: 14,
     paddingHorizontal: 6,
     minHeight: 84,
@@ -286,13 +391,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
     ...Shadow.sm,
+    shadowColor: "#2D226A",
   },
   statEmoji: { fontSize: 20 },
   statValue: { fontSize: FontSize.md, fontWeight: "800", color: C.text },
   statLabel: { fontSize: FontSize.xs, color: C.text3, fontWeight: "600" },
 
   section: { padding: Spacing.lg, gap: 14 },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: "800", color: C.text, letterSpacing: -0.5 },
+  sectionTitle: {
+    fontSize: FontSize.lg, fontWeight: "800", color: C.text, letterSpacing: -0.5,
+    borderLeftWidth: 3, borderLeftColor: "#7C5CFC", paddingLeft: 10,
+  },
 
   // Dashboard tile grid (replaces old Quick Express + list)
   tileGrid: {
@@ -301,8 +410,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   tile: {
-    flexBasis: "47%",
-    flexGrow: 1,
+    flex: 1,
     borderRadius: Radius.lg,
     padding: Spacing.lg,
     gap: 10,

@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
 import {
-  ScrollView, StyleSheet,
+  Pressable, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, {
+  useSharedValue, useAnimatedStyle, withSpring, withSequence,
+  FadeIn,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import axios from "axios";
@@ -20,6 +24,7 @@ const PAD  = 16;
 const GAP  = 14;
 const COLS = 3;
 
+console.log("icons:", AAC_ICONS.length, AAC_ICONS.filter(i => i.category === "math").length);
 // Chunk array into rows of N
 function chunk<T>(arr: T[], n: number): T[][] {
   const rows: T[][] = [];
@@ -28,20 +33,69 @@ function chunk<T>(arr: T[], n: number): T[][] {
 }
 
 const REQUEST_TYPE_BY_ICON_ID: Record<string, string> = {
-  medicine: "medication",  // matches mockdata.ts id "medicine" (label "Medicine")
-  toilet:   "bathroom",    // matches mockdata.ts id "toilet" (label "Bathroom")
-  // No dedicated "assistance" icon exists in mockdata.ts yet — add one
-  // there (e.g. id "assistance") and a matching entry here if needed.
+  medicine: "medication",
+  toilet: "bathroom",
+  emergency: "emergency",
+  hurt: "emergency",
+  stomachache: "emergency",
+  dizzy: "emergency",
+  unsafe: "emergency",
+  get_adult: "assistance",
+  // extra emergency icons
+  headache: "emergency",
+  cant_breathe: "emergency",
+  bleeding: "emergency",
+  very_scared: "emergency",
+  being_bullied: "emergency",
+  fell_down: "emergency",
+  fever: "emergency",
 };
 
 // ── Category config ────────────────────────────────────────────────────────────
 const CATEGORIES: { id: AACCategory; label: string; emoji: string; color: string }[] = [
-  { id: "all",       label: "All",      emoji: "📋", color: "#475569" },
-  { id: "needs",     label: "Needs",    emoji: "💧", color: "#0EA5E9" },
-  { id: "emotions",  label: "Feelings", emoji: "😊", color: "#EC4899" },
-  { id: "classroom", label: "Class",    emoji: "📖", color: "#8B5CF6" },
-  { id: "actions",   label: "Actions",  emoji: "✅", color: "#22C55E" },
+  { id: "all",           label: "All",       emoji: "📋", color: "#475569" },
+  { id: "needs",         label: "Needs",     emoji: "💧", color: "#0EA5E9" },
+  { id: "emotions",      label: "Feelings",  emoji: "😊", color: "#EC4899" },
+  { id: "classroom",     label: "Class",     emoji: "📖", color: "#8B5CF6" },
+  { id: "actions",       label: "Actions",   emoji: "✅", color: "#22C55E" },
+  { id: "communication", label: "Talk",      emoji: "💬", color: "#DB2777" },
+  { id: "people",        label: "People",    emoji: "👤", color: "#F97316" },
+  { id: "places",        label: "Places",    emoji: "📍", color: "#0D9488" },
+  { id: "math",          label: "Math",      emoji: "➕", color: "#2563EB" },
+  { id: "emergency",     label: "Emergency", emoji: "🚨", color: "#DC2626" },
 ];
+
+// ── Animated AAC cell ─────────────────────────────────────────────────────────
+const AACCell: React.FC<{
+  icon: AACIcon;
+  onPress: (icon: AACIcon) => void;
+  size: number;
+  emojiSize: number;
+}> = React.memo(({ icon, onPress, size, emojiSize }) => {
+  const scale = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={animStyle}>
+      <Pressable
+        onPressIn={() => {
+          scale.value = withSpring(0.87, { damping: 10, stiffness: 500 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 8, stiffness: 200 });
+        }}
+        onPress={() => onPress(icon)}
+        style={[s.cellBase, { width: size, height: size + 30, backgroundColor: icon.bg }]}
+      >
+        <Text style={{ fontSize: emojiSize }}>{icon.emoji}</Text>
+        <Text style={[s.cellLabel, { width: size - 8 }]} numberOfLines={1}>{icon.label}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+});
 
 interface AACBoardProps {
   onSendToTeacher?: (message: string) => void;
@@ -52,7 +106,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const { token, user } = useAuth();
   const { width: SW } = useWindowDimensions();
   const CELL     = Math.floor((SW - PAD * 2 - GAP * (COLS - 1)) / COLS);
-  const EMOJI_SZ = Math.floor(CELL * 0.40);
+  const EMOJI_SZ = Math.floor(CELL * 0.44);
   const [category, setCategory] = useState<AACCategory>("all");
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
@@ -108,7 +162,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       axios.post(
         `${API_BASE_URL}/requests/`,
-        { request_type: requestType },
+        { request_type: requestType, note: `${icon.emoji} ${icon.label}` },
         { headers: { Authorization: `Bearer ${token}` } }
       ).then(() => {
         setRequestSent(icon.label);
@@ -159,7 +213,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   // ── No session → show waiting screen ────────────────────────────────────
   if (!sessionCode) {
     return (
-      <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+      <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
         <ScreenHeader title="AAC Board" subtitle="Waiting for session..." />
         <View style={s.noSessionWrap}>
           <Text style={s.noSessionEmoji}>⏳</Text>
@@ -174,7 +228,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   }
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+    <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
 
       {/* ── Header ── */}
       <ScreenHeader
@@ -282,48 +336,47 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       </ScrollView>
 
       {/* ── Icon grid — manual rows for perfect alignment ── */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.grid}>
-        {rows.map((row, ri) => (
-          <View key={ri} style={s.row}>
-            {row.map(icon => (
-              <TouchableOpacity
-                key={icon.id}
-                onPress={() => handleIconPress(icon)}
-                activeOpacity={0.75}
-                style={[s.cellBase, { width: CELL, height: CELL + 30, backgroundColor: icon.bg }]}
-              >
-                <Text style={{ fontSize: EMOJI_SZ }}>{icon.emoji}</Text>
-                <Text style={[s.cellLabel, { width: CELL - 8 }]} numberOfLines={1}>{icon.label}</Text>
-              </TouchableOpacity>
-            ))}
-            {row.length < COLS && Array.from({ length: COLS - row.length }).map((_, i) => (
-              <View key={`empty-${i}`} style={{ width: CELL }} />
-            ))}
-          </View>
-        ))}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.grid} style={{ flex: 1 }}>
+        <Animated.View key={category} entering={FadeIn.duration(180)}>
+          {rows.map((row, ri) => (
+            <View key={ri} style={s.row}>
+              {row.map(icon => (
+                <AACCell
+                  key={icon.id}
+                  icon={icon}
+                  onPress={handleIconPress}
+                  size={CELL}
+                  emojiSize={EMOJI_SZ}
+                />
+              ))}
+              {row.length < COLS && Array.from({ length: COLS - row.length }).map((_, i) => (
+                <View key={`empty-${i}`} style={{ width: CELL }} />
+              ))}
+            </View>
+          ))}
+        </Animated.View>
       </ScrollView>
 
       {/* ── Action buttons ── */}
       <View style={s.actions}>
-        <TouchableOpacity
+        <Pressable
           onPress={handleSpeak}
+          onPressIn={() => {}}
           disabled={!selected.length || speaking}
-          activeOpacity={0.85}
           style={[s.actionBtn, s.speakBtn, (!selected.length || speaking) && s.btnDisabled]}
         >
           <Text style={s.actionEmoji}>🔊</Text>
           <Text style={s.actionText}>{speaking ? "Speaking..." : "Speak"}</Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <TouchableOpacity
+        <Pressable
           onPress={handleSend}
           disabled={!selected.length}
-          activeOpacity={0.85}
           style={[s.actionBtn, s.sendBtn, !selected.length && s.btnDisabled]}
         >
           <Text style={s.actionEmoji}>{sent ? "✅" : "📤"}</Text>
           <Text style={s.actionText}>{sent ? "Sent!" : "Send"}</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -423,9 +476,9 @@ const s = StyleSheet.create({
   catRow: { paddingHorizontal: PAD, gap: 8, alignItems: "center", paddingVertical: 8 },
   catTab: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 14, paddingVertical: 10,
-    borderRadius: Radius.full, borderWidth: 2, borderColor: C.gray2,
-    backgroundColor: C.white, minHeight: 44,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: Radius.full, borderWidth: 1.5, borderColor: "rgba(0,0,0,0.08)",
+    backgroundColor: C.white, minHeight: 40,
   },
   catEmoji: { fontSize: 16 },
   catLabel: { fontSize: FontSize.sm, color: C.text2, fontWeight: "600" },
@@ -436,8 +489,8 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", gap: 14, marginBottom: 14 },
   cellBase: {
     borderRadius: Radius.xl, alignItems: "center", justifyContent: "center",
-    gap: 10, borderWidth: 1.5, borderColor: "rgba(0,0,0,0.06)",
-    paddingVertical: 14, paddingHorizontal: 8, ...Shadow.sm,
+    gap: 8, paddingVertical: 14, paddingHorizontal: 8, ...Shadow.sm,
+    shadowColor: "#2D226A", shadowOpacity: 0.08,
   },
   cellLabel: {
     fontSize: FontSize.sm, fontWeight: "700", color: C.text,
@@ -455,7 +508,7 @@ const s = StyleSheet.create({
     minHeight: 62, ...Shadow.md,
   },
   speakBtn:   { backgroundColor: "#0F172A" },
-  sendBtn:    { backgroundColor: C.teal    },
+  sendBtn:    { backgroundColor: "#7C5CFC" },
   btnDisabled:{ opacity: 0.4               },
   actionEmoji:{ fontSize: 22               },
   actionText: { fontSize: FontSize.md, fontWeight: "800", color: C.white },

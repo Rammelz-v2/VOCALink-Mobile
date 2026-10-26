@@ -1,6 +1,5 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Colors as C, FontSize, Spacing } from "../../constants/tokens";
 
 interface ScreenHeaderProps {
@@ -10,30 +9,37 @@ interface ScreenHeaderProps {
 }
 
 export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ title, subtitle, right }) => (
-  <LinearGradient
-    colors={["#1AADDC", "#0E8DB8"]}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={styles.header}
-  >
-    <View style={styles.left}>
-      <Text style={styles.title}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+  <View style={styles.header}>
+    <View style={styles.accentBar} />
+    <View style={styles.inner}>
+      <View style={styles.left}>
+        <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
+      {right && <View style={styles.right}>{right}</View>}
     </View>
-    {right && <View style={styles.right}>{right}</View>}
-  </LinearGradient>
+  </View>
 );
 
 const styles = StyleSheet.create({
   header: {
+    backgroundColor: "#2D226A",
+    overflow: "hidden",
+  },
+  accentBar: {
+    height: 3,
+    backgroundColor: "#1AADDC",
+  },
+  inner: {
     paddingHorizontal: Spacing.lg,
-    paddingVertical: 14,
+    paddingTop: 14,
+    paddingBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   left:     { flex: 1 },
-  title:    { fontSize: FontSize.lg, fontWeight: "800", color: C.white, letterSpacing: -0.5 },
-  subtitle: { fontSize: FontSize.xs, color: "rgba(255,255,255,0.75)", marginTop: 2, fontWeight: "500" },
+  title:    { fontSize: FontSize.lg, fontWeight: "800", color: C.white, letterSpacing: -0.3 },
+  subtitle: { fontSize: FontSize.xs, color: "rgba(255,255,255,0.60)", marginTop: 3, fontWeight: "500", letterSpacing: 0.3 },
   right:    { marginLeft: 12 },
 });

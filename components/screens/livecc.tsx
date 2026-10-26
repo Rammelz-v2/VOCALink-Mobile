@@ -1,43 +1,19 @@
-/**
- * livecc.tsx — STUDENT SCREEN
- *
- * Shows live teacher captions + AAC icon tray.
- * No text messaging — students respond only via AAC icons.
- * Student taps are logged via POST /api/logs/ (already existed on the
- * backend); GET /api/cc/messages/ now merges those AAC taps together with
- * teacher captions into one shared, time-ordered feed, so this screen no
- * longer needs to fake anything client-side.
- * Polls session status every 2 s so the screen updates the moment the
- * teacher starts/ends the class, and picks up the teacher's display name
- * directly from /api/sessions/student.
- */
-
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, {
+  FadeIn, FadeInUp,
+  useSharedValue, useAnimatedStyle,
+  withRepeat, withSequence, withTiming,
+} from "react-native-reanimated";
 import axios from "axios";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../constants/api";
 import { ScreenHeader } from "../ui/ScreenHeader";
-import { Colors as C, FontSize, Radius, Spacing } from "../../constants/tokens";
+import { FontSize, Radius, Spacing } from "../../constants/tokens";
 
-const POLL_MS      = 1500;
-const SESSION_MS   = 2000;
+const POLL_MS = 1500;
 
-const LIVE_ICONS = [
-  { id: "help",     emoji: "✋", label: "Help me",       msg: "Help me!",          bg: "#FAEEDA" },
-  { id: "yes",      emoji: "✅", label: "Yes",            msg: "Yes",               bg: "#E1F5EE" },
-  { id: "no",       emoji: "❌", label: "No",             msg: "No",                bg: "#FCEBEB" },
-  { id: "done",     emoji: "📖", label: "Done",           msg: "I'm done",          bg: "#E1F5EE" },
-  { id: "question", emoji: "❓", label: "Question",       msg: "I have a question", bg: "#E6F1FB" },
-  { id: "repeat",   emoji: "🔁", label: "Repeat",         msg: "Please repeat",     bg: "#EEEDFE" },
-  { id: "wait",     emoji: "⏳", label: "Wait",           msg: "Wait please",       bg: "#FAEEDA" },
-  { id: "confused", emoji: "😕", label: "Confused",       msg: "I'm confused",      bg: "#E1F5EE" },
-];
-
-// A line in the feed is either a teacher caption or a student icon tap.
 type Speaker = "teacher" | "student";
 
 interface CCLine {
@@ -45,40 +21,59 @@ interface CCLine {
   text:    string;
   time:    string;
   speaker: Speaker;
-  name:    string;   // display name of whoever said it
-  failed?: boolean;  // true if the optimistic POST never made it to the server
+  name:    string;
+  failed?: boolean;
 }
 
-// Local (student-tap) lines get a "local-" prefixed id so they never
-// collide with server ids ("cc-<id>" / "aac-<id>") and are easy to spot
-// for dedup once the server confirms the real one.
-let localIdCounter = 0;
+interface LiveCCProps {
+  setActive?: (tab: string) => void;
+  sessionCode?: string | null;
+}
 
-const LiveCC: React.FC = () => {
+const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
   const { token, user } = useAuth();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
-  const [lines,          setLines]          = useState<CCLine[]>([]);
-  const [connected,      setConnected]      = useState(false);
-  const [sessionActive,  setSessionActive]  = useState(true);
-  const [sessionChecked, setSessionChecked] = useState(false);
-  const [teacherName,    setTeacherName]    = useState("Teacher");
+  const [lines,       setLines]       = useState<CCLine[]>([]);
+  const [connected,   setConnected]   = useState(false);
+  const [teacherName, setTeacherName] = useState("Teacher");
 
   const studentName = (user as any)?.full_name ?? (user as any)?.username ?? "You";
-  const lastTsRef   = useRef<string>(""); // ISO timestamp cursor for polling
+  const lastTsRef   = useRef<string>("");
 
-  // ── Caption polling ───────────────────────────────────────────────────────
+  // ── Pulsing live dot ──────────────────────────────────────────────────────
+  const dotOpacity = useSharedValue(1);
+  useEffect(() => {
+    if (connected) {
+      dotOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.25, { duration: 700 }),
+          withTiming(1,    { duration: 700 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      dotOpacity.value = 1;
+    }
+  }, [connected]);
+
+  const dotStyle = useAnimatedStyle(() => ({
+    opacity: dotOpacity.value,
+  }));
+
+  // ── Caption polling — only when in an active session ─────────────────────
   const pollCaptions = useCallback(async () => {
-    if (!token) return;
+    if (!token || !sessionCode) return;
     try {
       const res = await axios.get(
-        `${API_BASE_URL}/cc/messages/?since=${encodeURIComponent(lastTsRef.current)}`,
+        `${API_BASE_URL}/cc/messages/?since=${encodeURIComponent(lastTsRef.current)}&session_code=${sessionCode ?? ""}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const msgs: any[] = res.data;
       if (msgs.length > 0) {
         const formatted: CCLine[] = msgs.map((m) => ({
-          id:      m.id, // "cc-12" or "aac-7"
+          id:      m.id,
           text:    m.text,
           time: m.sent_at
             ? new Date(m.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -87,9 +82,11 @@ const LiveCC: React.FC = () => {
           name:    m.sender_name ?? (m.speaker === "student" ? studentName : teacherName),
         }));
 
+        // Pick up teacher name from incoming messages
+        const firstTeacher = formatted.find(f => f.speaker === "teacher" && f.name);
+        if (firstTeacher) setTeacherName(firstTeacher.name);
+
         setLines((prev) => {
-          // Drop any local optimistic lines that this batch just confirmed
-          // from the server, so the same tap doesn't show twice.
           const confirmed = new Set(formatted.map((f) => `${f.name}:${f.text}`));
           const withoutDupes = prev.filter(
             (l) => !(l.id.startsWith("local-") && confirmed.has(`${l.name}:${l.text}`)),
@@ -102,102 +99,48 @@ const LiveCC: React.FC = () => {
     } catch {
       setConnected(false);
     }
-  }, [token, teacherName, studentName]);
+  }, [token, sessionCode, teacherName, studentName]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !sessionCode) return;
     pollCaptions();
     const iv = setInterval(pollCaptions, POLL_MS);
     return () => clearInterval(iv);
-  }, [pollCaptions, token]);
+  }, [pollCaptions, token, sessionCode]);
 
-  // ── Session status polling — detects when teacher starts/ends class ──────
-  useEffect(() => {
-    if (!token) return;
-    const checkSession = async () => {
-      try {
-        const res = await axios.get(
-          `${API_BASE_URL}/sessions/student`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        setSessionActive(res.data.active);
-        setSessionChecked(true);
-        if (res.data.teacher_name) setTeacherName(res.data.teacher_name);
-      } catch {}
-    };
-    checkSession();
-    const iv = setInterval(checkSession, SESSION_MS);
-    return () => clearInterval(iv);
-  }, [token]);
-
-  // ── AAC icon tap → shows in feed immediately + logged to the backend ────
-  const handleIconTap = async (icon: typeof LIVE_ICONS[0]) => {
-    if (!token) return;
-
-    const clientId = `local-${localIdCounter++}`;
-
-    // Optimistically drop it into the feed right away, labeled with the
-    // student's own name, so they see their tap appear like a chat message.
-    const newLine: CCLine = {
-      id:      clientId,
-      text:    icon.msg,
-      time:    new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      speaker: "student",
-      name:    studentName,
-    };
-    setLines((prev) => [...prev, newLine]);
-
-    try {
-      // This already existed on the backend and is what actually persists
-      // the tap. GET /cc/messages/ now merges these into the shared live
-      // feed automatically — no separate "post to the feed" call needed.
-      await axios.post(
-        `${API_BASE_URL}/logs/`,
-        { icon_id: icon.id, icon_label: icon.label, message: icon.msg },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-    } catch {
-      // Don't leave a silent "ghost" message — mark it so the student knows
-      // it didn't actually go out and can try again.
-      setLines((prev) =>
-        prev.map((l) => (l.id === clientId ? { ...l, failed: true } : l)),
-      );
-    }
-  };
-
-  // Last 6 lines fade older ones (Google Meet style)
-  const visible = lines.slice(-6);
-
-  // ── Session ended overlay ─────────────────────────────────────────────────
-  if (sessionChecked && !sessionActive) {
+  // ── No session gate ───────────────────────────────────────────────────────
+  if (!sessionCode) {
     return (
       <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
-        <View style={s.endedScreen}>
-          <Text style={s.endedEmoji}>🎓</Text>
-          <Text style={s.endedTitle}>Class has ended</Text>
-          <Text style={s.endedSub}>
-            {teacherName} has ended the session.{"\n"}
-            Your participation has been saved.
+        <Animated.View entering={FadeIn.duration(400)} style={s.noSessionScreen}>
+          <Text style={s.noSessionEmoji}>🔒</Text>
+          <Text style={s.noSessionTitle}>No Active Session</Text>
+          <Text style={s.noSessionSub}>
+            Ask your teacher for the session code, then enter it on the Home screen to join.
           </Text>
-        </View>
+          <TouchableOpacity
+            style={s.noSessionBtn}
+            onPress={() => setActive?.("home")}
+            activeOpacity={0.82}
+          >
+            <Text style={s.noSessionBtnText}>Go to Home →</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </SafeAreaView>
     );
   }
 
+  const visible = lines.slice(-6);
+
   return (
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
 
-      {/* Header */}
       <ScreenHeader
         title="Live Captions"
-        subtitle={
-          connected
-            ? `● Live from ${teacherName}`
-            : "○ Connecting to class…"
-        }
+        subtitle={connected ? `● Live · ${teacherName}` : "○ Connecting…"}
       />
 
-      {/* Caption feed */}
+      {/* ── Caption feed ─────────────────────────────────────────────── */}
       <View style={s.ccContainer}>
         <ScrollView
           ref={scrollRef}
@@ -206,101 +149,132 @@ const LiveCC: React.FC = () => {
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           {visible.length === 0 ? (
-            <View style={s.emptyWrap}>
+            <Animated.View entering={FadeIn.duration(500)} style={s.emptyWrap}>
+              <Text style={s.emptyEmoji}>📡</Text>
               <Text style={s.emptyText}>Waiting for {teacherName} to speak…</Text>
-            </View>
+            </Animated.View>
           ) : (
             visible.map((line, idx) => {
-              const isLatest   = idx === visible.length - 1;
-              const isStudent  = line.speaker === "student";
-              const opacity    = isLatest
+              const isLatest  = idx === visible.length - 1;
+              const isStudent = line.speaker === "student";
+              const opacity   = isLatest
                 ? 1
                 : 0.3 + (idx / Math.max(visible.length - 1, 1)) * 0.5;
               return (
-                <View key={line.id} style={[s.ccRow, { opacity }]}>
+                <Animated.View
+                  key={line.id}
+                  entering={isLatest ? FadeInUp.duration(280).springify() : undefined}
+                  style={[s.ccRow, { opacity }]}
+                >
                   {isLatest && (
-                    <View
-                      style={[
-                        s.activeBar,
-                        isStudent && { backgroundColor: "#81C995" },
-                      ]}
-                    />
+                    <View style={[s.activeBar, isStudent && s.activeBarStudent]} />
                   )}
                   <Text style={s.ccLine}>
-                    <Text
-                      style={[
-                        s.speakerLabel,
-                        isStudent ? s.speakerLabelStudent : s.speakerLabelTeacher,
-                      ]}
-                    >
+                    <Text style={[s.speakerLabel, isStudent ? s.speakerStudent : s.speakerTeacher]}>
                       {line.name}:{" "}
                     </Text>
                     <Text style={[s.ccText, isLatest && s.ccTextLatest]}>
                       {line.text}
-                      {line.failed ? "  ⚠️ not sent" : ""}
+                      {line.failed ? "  ⚠️" : ""}
                     </Text>
                   </Text>
-                </View>
+                </Animated.View>
               );
             })
           )}
         </ScrollView>
       </View>
 
-      {/* AAC icon tray */}
-      <View style={s.iconTrayWrap}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.iconTrayRow}
+      {/* ── Bottom area ──────────────────────────────────────────────── */}
+      <View style={s.bottomArea}>
+
+        <View style={s.statusRow}>
+          <Animated.View style={[s.liveOrb, !connected && s.liveOrbOff, dotStyle]} />
+          <Text style={s.statusText}>
+            {connected ? `Live · ${teacherName}  ·  Code: ${sessionCode}` : "Connecting to class…"}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={s.aacBtn}
+          onPress={() => setActive?.("board")}
+          activeOpacity={0.82}
         >
-          {LIVE_ICONS.map((icon) => (
-            <TouchableOpacity
-              key={icon.id}
-              onPress={() => handleIconTap(icon)}
-              style={[s.iconTile, { backgroundColor: icon.bg }]}
-              activeOpacity={0.7}
-            >
-              <Text style={s.iconTileEmoji}>{icon.emoji}</Text>
-              <Text style={s.iconTileLabel}>{icon.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          <View style={s.aacBtnIconWrap}>
+            <Text style={{ fontSize: 26 }}>🗣️</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.aacBtnTitle}>Open AAC Board</Text>
+            <Text style={s.aacBtnSub}>Build a full message for your teacher</Text>
+          </View>
+          <Text style={s.aacBtnArrow}>›</Text>
+        </TouchableOpacity>
+
       </View>
 
     </SafeAreaView>
   );
 };
 
+const TEAL   = "#1AADDC";
+const PURPLE = "#534AB7";
+
 const s = StyleSheet.create({
-  safe:          { flex: 1, backgroundColor: "#202124" },
+  safe: { flex: 1, backgroundColor: "#1A1B1E" },
+
+  // No-session gate
+  noSessionScreen: { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, gap: 16 },
+  noSessionEmoji:  { fontSize: 64 },
+  noSessionTitle:  { fontSize: 22, fontWeight: "800", color: "#F9FAFB", textAlign: "center" },
+  noSessionSub:    { fontSize: FontSize.base, color: "#6B7280", textAlign: "center", lineHeight: 26 },
+  noSessionBtn:    { marginTop: 8, backgroundColor: "#7C5CFC", borderRadius: 999, paddingHorizontal: 28, paddingVertical: 14 },
+  noSessionBtnText:{ fontSize: FontSize.base, fontWeight: "800", color: "#FFF" },
 
   // Caption area
-  ccContainer:   { flex: 1, justifyContent: "flex-end", paddingBottom: 8 },
-  feed:          { padding: Spacing.lg, gap: 14, justifyContent: "flex-end", flexGrow: 1 },
-  emptyWrap:     { alignItems: "center", marginTop: 60 },
-  emptyText:     { fontSize: FontSize.md, color: "#9AA0A6", fontStyle: "italic", textAlign: "center" },
-  ccRow:         { flexDirection: "row", alignItems: "flex-start", paddingLeft: 12 },
-  activeBar:     { width: 4, height: "100%", backgroundColor: "#8AB4F8", position: "absolute", left: -2, borderRadius: 2 },
-  ccLine:        { flexShrink: 1 },
-  speakerLabel:  { fontSize: 15, fontWeight: "800" },
-  speakerLabelTeacher: { color: "#8AB4F8" },
-  speakerLabelStudent: { color: "#81C995" },
-  ccText:        { fontSize: 26, color: "#E8EAED", lineHeight: 34, fontWeight: "500" },
-  ccTextLatest:  { color: "#FFF", fontWeight: "700", fontSize: 28, lineHeight: 36 },
+  ccContainer: { flex: 1, justifyContent: "flex-end" },
+  feed:        { padding: Spacing.lg, gap: 16, justifyContent: "flex-end", flexGrow: 1 },
 
-  // AAC icon tray
-  iconTrayWrap:  { borderTopWidth: 1, borderTopColor: "#3C4043", backgroundColor: "#2D2F31", paddingVertical: 10 },
-  iconTrayRow:   { paddingHorizontal: Spacing.md, gap: 10, alignItems: "center" },
-  iconTile:      { alignItems: "center", justifyContent: "center", borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 10, minWidth: 68, gap: 4 },
-  iconTileEmoji: { fontSize: 26 },
-  iconTileLabel: { fontSize: 11, fontWeight: "700", color: "#202124", textAlign: "center" },
+  emptyWrap:  { alignItems: "center", marginTop: 60, gap: 12 },
+  emptyEmoji: { fontSize: 36, opacity: 0.5 },
+  emptyText:  { fontSize: FontSize.base, color: "#6B7280", fontStyle: "italic", textAlign: "center", lineHeight: 24 },
 
-  // Session ended screen
-  endedScreen:   { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, gap: 16 },
-  endedEmoji:    { fontSize: 64 },
-  endedTitle:    { fontSize: FontSize.xl, fontWeight: "800", color: "#FFF", textAlign: "center" },
-  endedSub:      { fontSize: FontSize.base, color: "#9AA0A6", textAlign: "center", lineHeight: 24 },
+  ccRow:           { flexDirection: "row", alignItems: "flex-start", paddingLeft: 14 },
+  activeBar:       { width: 3, height: "100%", backgroundColor: TEAL, position: "absolute", left: 0, borderRadius: 2 },
+  activeBarStudent:{ backgroundColor: "#4ADE80" },
+  ccLine:          { flexShrink: 1 },
+  speakerLabel:    { fontSize: 14, fontWeight: "800" },
+  speakerTeacher:  { color: TEAL },
+  speakerStudent:  { color: "#4ADE80" },
+  ccText:          { fontSize: 24, color: "#D1D5DB", lineHeight: 32, fontWeight: "500" },
+  ccTextLatest:    { color: "#FFFFFF", fontWeight: "700", fontSize: 28, lineHeight: 38 },
+
+  // Bottom area
+  bottomArea: {
+    borderTopWidth: 1, borderTopColor: "#2D2F34",
+    backgroundColor: "#22242A",
+    paddingHorizontal: Spacing.lg,
+    paddingTop: 14, paddingBottom: 18,
+    gap: 12,
+  },
+  statusRow:  { flexDirection: "row", alignItems: "center", gap: 8 },
+  liveOrb:    { width: 8, height: 8, borderRadius: 999, backgroundColor: TEAL },
+  liveOrbOff: { backgroundColor: "#4B5563" },
+  statusText: { fontSize: FontSize.xs, color: "#6B7280", fontWeight: "600", letterSpacing: 0.3 },
+
+  aacBtn: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    backgroundColor: "#2D2B52",
+    borderRadius: Radius.lg, padding: 16,
+    borderWidth: 1.5, borderColor: "rgba(83,74,183,0.55)",
+  },
+  aacBtnIconWrap: {
+    width: 48, height: 48, borderRadius: 14,
+    backgroundColor: PURPLE,
+    alignItems: "center", justifyContent: "center",
+  },
+  aacBtnTitle: { fontSize: FontSize.md, fontWeight: "800", color: "#F3F4F6" },
+  aacBtnSub:   { fontSize: FontSize.xs, color: "#6B7280", marginTop: 3, fontWeight: "500" },
+  aacBtnArrow: { fontSize: 26, color: "#534AB7", fontWeight: "300", marginRight: 2 },
 });
 
 export default LiveCC;

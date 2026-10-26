@@ -30,7 +30,7 @@ export const Colors = {
   text2:       "#475569",
   text3:       "#94A3B8",
   white:       "#FFFFFF",
-  bg:          "#F0F4F8",
+  bg:          "#F4F2FF",
 };
 
 export const Radius = {
