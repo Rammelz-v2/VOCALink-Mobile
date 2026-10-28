@@ -25,9 +25,10 @@ interface Props { setActive: (tab: any) => void; }
 interface CCLine {
   id:           number | string;
   text:         string;
-  speaker:      "teacher" | "student";
+  speaker:      "teacher" | "student" | "event";
   time:         string;
   studentName?: string;
+  eventKind?:   "join" | "leave" | "start" | "end";
 }
 
 export default function TeacherLiveCC({ setActive }: Props) {
@@ -38,9 +39,12 @@ export default function TeacherLiveCC({ setActive }: Props) {
   const [lines, setLines]               = useState<CCLine[]>([]);
   const [input, setInput]               = useState("");
   const [isSending, setIsSending]       = useState(false);
-  const lastCCIdRef  = useRef<number>(0);
-  const lastAacIdRef = useRef<number>(0);
-  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastCCIdRef              = useRef<number>(0);
+  const lastAacIdRef             = useRef<number>(0);
+  const pollRef                  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const seenParticipantIdsRef    = useRef<Set<number>>(new Set());
+  const activeParticipantsMapRef = useRef<Map<number, string>>(new Map());
+  const sessionStartedRef        = useRef(false);
 
   // ── Poll captions + student replies + AAC icon taps ───────────────────────
   const poll = useCallback(async () => {
@@ -93,6 +97,51 @@ export default function TeacherLiveCC({ setActive }: Props) {
     pollRef.current = setInterval(poll, POLL_MS);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [poll, token]);
+
+  // ── Session start event + participant tracking ─────────────────────────────
+  useEffect(() => {
+    if (!token) return;
+
+    // Inject "Session started" once
+    if (!sessionStartedRef.current) {
+      sessionStartedRef.current = true;
+      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setLines(prev => [{ id: "event-start", text: "Session started", speaker: "event", time, eventKind: "start" }, ...prev]);
+    }
+
+    const pollParticipants = async () => {
+      try {
+        const res  = await axios.get(`${API_BASE_URL}/sessions/active/participants/`, { headers: { Authorization: `Bearer ${token}` } });
+        const list: { id: number; name: string; joined_at: string }[] = res.data;
+        const now     = new Date().toISOString();
+        const nowFmt  = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const newIdSet = new Set(list.map(p => p.id));
+
+        // Departures
+        activeParticipantsMapRef.current.forEach((name, id) => {
+          if (!newIdSet.has(id)) {
+            seenParticipantIdsRef.current.delete(id);
+            setLines(prev => [...prev, { id: `event-leave-${id}-${now}`, text: `${name} left the session`, speaker: "event", time: nowFmt, eventKind: "leave" }]);
+          }
+        });
+
+        activeParticipantsMapRef.current = new Map(list.map(p => [p.id, p.name]));
+
+        // Arrivals
+        list.forEach(p => {
+          if (!seenParticipantIdsRef.current.has(p.id)) {
+            seenParticipantIdsRef.current.add(p.id);
+            const joinFmt = p.joined_at ? new Date(p.joined_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : nowFmt;
+            setLines(prev => [...prev, { id: `event-join-${p.id}`, text: `${p.name} joined the session`, speaker: "event", time: joinFmt, eventKind: "join" }]);
+          }
+        });
+      } catch {}
+    };
+
+    pollParticipants();
+    const iv = setInterval(pollParticipants, 3000);
+    return () => clearInterval(iv);
+  }, [token]);
 
   // ── Broadcast caption to students ─────────────────────────────────────────
   const broadcastMessage = async (textOverride?: string) => {
@@ -171,6 +220,22 @@ export default function TeacherLiveCC({ setActive }: Props) {
             </View>
           ) : (
             lines.map((line) => {
+              if (line.speaker === "event") {
+                const cfg: Record<string, { bg: string; color: string; icon: string }> = {
+                  join:  { bg: "#DCFCE7", color: "#166534", icon: "🟢" },
+                  leave: { bg: "#FEE2E2", color: "#991B1B", icon: "🔴" },
+                  start: { bg: "#E0F2FE", color: "#0369A1", icon: "🎙️" },
+                  end:   { bg: "#F1F5F9", color: "#475569", icon: "🔒" },
+                };
+                const c = cfg[line.eventKind ?? "start"];
+                return (
+                  <View key={line.id} style={[s.eventLine, { backgroundColor: c.bg }]}>
+                    <Text style={s.eventIcon}>{c.icon}</Text>
+                    <Text style={[s.eventText, { color: c.color }]}>{line.text}</Text>
+                    <Text style={[s.ccTime, { color: colors.text3 }]}>{line.time}</Text>
+                  </View>
+                );
+              }
               if (line.speaker === "teacher") {
                 return (
                   <View key={line.id} style={[s.ccCard, { backgroundColor: colors.tealLight }]}>
@@ -182,7 +247,6 @@ export default function TeacherLiveCC({ setActive }: Props) {
                   </View>
                 );
               }
-              // Student reply bubble
               return (
                 <View key={line.id} style={[s.replyCard, { backgroundColor: colors.purpleLight }]}>
                   <View style={s.ccTop}>
@@ -240,6 +304,10 @@ const s = StyleSheet.create({
   replyCard:      { backgroundColor: C.purpleLight, borderRadius: Radius.md, padding: Spacing.md, borderWidth: 1, borderColor: C.gray2, ...Shadow.sm },
   replySpeaker:   { fontSize: FontSize.sm, fontWeight: "700", color: C.purple },
   replyText:      { fontSize: 20, color: C.text, lineHeight: 28 },
+  // Event lines
+  eventLine:    { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: 8 },
+  eventIcon:    { fontSize: 14 },
+  eventText:    { flex: 1, fontSize: FontSize.sm, fontWeight: "500", fontStyle: "italic" },
   // Input area
   inputContainer:   { flexDirection: "row", alignItems: "flex-end", padding: Spacing.md, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.gray2, gap: 8 },
   largeInput:       { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: C.gray, borderRadius: Radius.md, padding: Spacing.md, fontSize: FontSize.base, color: C.text, paddingTop: 14 },

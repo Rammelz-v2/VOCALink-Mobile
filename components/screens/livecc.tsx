@@ -16,15 +16,16 @@ import { useLayout } from "../../hooks/useLayout";
 
 const POLL_MS = 1500;
 
-type Speaker = "teacher" | "student";
+type Speaker = "teacher" | "student" | "event";
 
 interface CCLine {
-  id:      string;
-  text:    string;
-  time:    string;
-  speaker: Speaker;
-  name:    string;
-  failed?: boolean;
+  id:         string;
+  text:       string;
+  time:       string;
+  speaker:    Speaker;
+  name:       string;
+  failed?:    boolean;
+  eventKind?: "join" | "leave" | "start" | "end";
 }
 
 interface LiveCCProps {
@@ -42,8 +43,10 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
   const [connected,   setConnected]   = useState(false);
   const [teacherName, setTeacherName] = useState("Teacher");
 
-  const studentName = (user as any)?.full_name ?? (user as any)?.username ?? "You";
-  const lastTsRef   = useRef<string>("");
+  const studentName    = (user as any)?.full_name ?? (user as any)?.username ?? "You";
+  const lastTsRef      = useRef<string>("");
+  const joinedOnceRef  = useRef(false);
+  const prevConnected  = useRef(false);
 
   // ── Pulsing live dot ──────────────────────────────────────────────────────
   const dotOpacity = useSharedValue(1);
@@ -102,10 +105,29 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
         lastTsRef.current = msgs[msgs.length - 1].sent_at;
       }
       setConnected(true);
+
+      // Inject "You joined" once on first successful connection
+      if (!joinedOnceRef.current) {
+        joinedOnceRef.current = true;
+        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        setLines(prev => [
+          { id: "event-join-self", text: "You joined the session", speaker: "event", name: "System", time, eventKind: "join" },
+          ...prev,
+        ]);
+      }
     } catch {
+      // Detect session end: was connected, now failing
+      if (prevConnected.current) {
+        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        setLines(prev => [
+          ...prev,
+          { id: `event-end-${Date.now()}`, text: "Session has ended", speaker: "event", name: "System", time, eventKind: "end" },
+        ]);
+      }
       setConnected(false);
     }
-  }, [token, sessionCode, teacherName, studentName]);
+    prevConnected.current = connected;
+  }, [token, sessionCode, teacherName, studentName, connected]);
 
   useEffect(() => {
     if (!token || !sessionCode) return;
@@ -153,6 +175,25 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
           lines.map((line, idx) => {
             const isLatest  = idx === lines.length - 1;
             const isStudent = line.speaker === "student";
+
+            if (line.speaker === "event") {
+              const cfg: Record<string, { bg: string; color: string; icon: string }> = {
+                join:  { bg: "rgba(34,197,94,0.12)",  color: "#4ADE80", icon: "🟢" },
+                leave: { bg: "rgba(239,68,68,0.12)",  color: "#F87171", icon: "🔴" },
+                start: { bg: "rgba(26,173,220,0.12)", color: "#1AADDC", icon: "🎙️" },
+                end:   { bg: "rgba(100,116,139,0.15)",color: "#94A3B8", icon: "🔒" },
+              };
+              const c = cfg[line.eventKind ?? "start"];
+              return (
+                <Animated.View key={line.id} entering={isLatest ? FadeInUp.duration(280).springify() : undefined}
+                  style={[s.eventLine, { backgroundColor: c.bg }]}>
+                  <Text style={{ fontSize: 13 }}>{c.icon}</Text>
+                  <Text style={[s.eventText, { color: c.color }]}>{line.text}</Text>
+                  <Text style={s.eventTime}>{line.time}</Text>
+                </Animated.View>
+              );
+            }
+
             return (
               <Animated.View
                 key={line.id}
@@ -253,6 +294,10 @@ const s = StyleSheet.create({
   emptyWrap:  { alignItems: "center", marginTop: 60, gap: 12 },
   emptyEmoji: { fontSize: 36, opacity: 0.5 },
   emptyText:  { fontSize: FontSize.base, color: "#6B7280", fontStyle: "italic", textAlign: "center", lineHeight: 24 },
+
+  eventLine: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7, marginHorizontal: 2 },
+  eventText: { flex: 1, fontSize: 13, fontWeight: "500", fontStyle: "italic" },
+  eventTime: { fontSize: 11, color: "#6B7280" },
 
   ccRow:           { flexDirection: "row", alignItems: "flex-start", paddingLeft: 14 },
   activeBar:       { width: 3, height: "100%", backgroundColor: TEAL, position: "absolute", left: 0, borderRadius: 2 },
