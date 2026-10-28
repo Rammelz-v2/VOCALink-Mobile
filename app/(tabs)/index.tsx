@@ -22,9 +22,10 @@ export default function TabsLayout() {
   const { navHeight } = useLayout();
   const isTeacher = user?.status === "TEACHER";
 
-  const [active,        setActive]        = useState<ExtendedTabName>("home");
-  const [unread,        setUnread]        = useState(1);
-  const [sessionActive, setSessionActive] = useState(false);
+  const [active,              setActive]              = useState<ExtendedTabName>("home");
+  const [unread,              setUnread]              = useState(1);
+  const [sessionActive,       setSessionActive]       = useState(false);
+  const [teacherSessionCode,  setTeacherSessionCode]  = useState<string | null>(null);
 
   // ── Student session state — code-based joining ────────────────────────────
   const [sessionCode,  setSessionCode]  = useState<string | null>(null);
@@ -51,6 +52,7 @@ export default function TabsLayout() {
           headers: { Authorization: `Bearer ${token}` },
         });
         setSessionActive(res.data.active);
+        setTeacherSessionCode(res.data.session_code ?? null);
       } catch {}
     };
     check();
@@ -129,7 +131,17 @@ export default function TabsLayout() {
   const renderScreen = () => {
     if (isTeacher) {
       switch (active) {
-        case "home":           return <TeacherHome setActive={setActive} />;
+        case "home":           return (
+          <TeacherHome
+            setActive={setActive}
+            sessionActive={sessionActive}
+            sessionCode={teacherSessionCode}
+            onSessionChange={(active, code) => {
+              setSessionActive(active);
+              setTeacherSessionCode(code);
+            }}
+          />
+        );
         case "teacher-livecc": return <TeacherLiveCC setActive={setActive} />;
         case "profile":        return <ProfileUI />;
         default:               return <TeacherHome setActive={setActive} />;

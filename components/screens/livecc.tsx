@@ -83,7 +83,7 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
           id:      m.id,
           text:    m.text,
           time: m.sent_at
-            ? new Date(m.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            ? new Date(m.sent_at.endsWith("Z") ? m.sent_at : m.sent_at + "Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           speaker: m.speaker === "student" ? "student" : "teacher",
           name:    m.sender_name ?? (m.speaker === "student" ? studentName : teacherName),
@@ -119,9 +119,19 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
       // Detect session end: was connected, now failing
       if (prevConnected.current) {
         const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        let endText = "Session has ended";
+        try {
+          const statusRes = await axios.get(
+            `${API_BASE_URL}/sessions/student?session_code=${encodeURIComponent(sessionCode ?? "")}`,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          if (statusRes.data?.ended_reason === "inactivity") {
+            endText = "Session ended due to inactivity";
+          }
+        } catch { /* backend unreachable — use generic message */ }
         setLines(prev => [
           ...prev,
-          { id: `event-end-${Date.now()}`, text: "Session has ended", speaker: "event", name: "System", time, eventKind: "end" },
+          { id: `event-end-${Date.now()}`, text: endText, speaker: "event", name: "System", time, eventKind: "end" },
         ]);
       }
       setConnected(false);

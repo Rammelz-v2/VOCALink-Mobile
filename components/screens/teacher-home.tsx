@@ -16,21 +16,38 @@ import { useLayout } from "../../hooks/useLayout";
 
 interface Props {
   setActive: (tab: any) => void;
+  sessionActive?:   boolean;
+  sessionCode?:     string | null;
+  onSessionChange?: (active: boolean, code: string | null) => void;
 }
 
-export default function TeacherHome({ setActive }: Props) {
+export default function TeacherHome({ setActive, sessionActive: propSessionActive, sessionCode: propSessionCode, onSessionChange }: Props) {
   const { user, token } = useAuth();
   const { colors }      = useTheme();
   const { isTablet, isLandscape, hPad } = useLayout();
-  const [isSessionActive, setIsSessionActive] = useState(false);
-  const [sessionCode, setSessionCode]         = useState<string | null>(null);
-  const [loading, setLoading]                 = useState(false);
-  const [checking, setChecking]               = useState(true);
+
+  // Use parent-provided state when available so navigating away and back
+  // doesn't flash the wrong initial state while re-fetching.
+  const hasProps = propSessionActive !== undefined;
+  const [isSessionActive, setIsSessionActive] = useState(hasProps ? propSessionActive : false);
+  const [sessionCode,     setSessionCode]     = useState<string | null>(hasProps ? (propSessionCode ?? null) : null);
+  const [loading,   setLoading]  = useState(false);
+  const [checking,  setChecking] = useState(!hasProps);
 
   const displayName = user?.first_name || user?.username || "Teacher";
 
+  // Keep local state in sync when parent updates (e.g. from the 5s poll).
   useEffect(() => {
-    if (!token) { setChecking(false); return; }
+    if (propSessionActive !== undefined) setIsSessionActive(propSessionActive);
+  }, [propSessionActive]);
+
+  useEffect(() => {
+    if (propSessionCode !== undefined) setSessionCode(propSessionCode ?? null);
+  }, [propSessionCode]);
+
+  // Only do our own fetch when the parent doesn't supply session state.
+  useEffect(() => {
+    if (hasProps || !token) { setChecking(false); return; }
     axios
       .get(`${API_BASE_URL}/sessions/teacher`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -44,7 +61,7 @@ export default function TeacherHome({ setActive }: Props) {
         setSessionCode(null);
       })
       .finally(() => setChecking(false));
-  }, [token]);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const executeToggle = async () => {
     setLoading(true);
@@ -54,9 +71,12 @@ export default function TeacherHome({ setActive }: Props) {
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setIsSessionActive(res.data.active);
-      setSessionCode(res.data.session_code ?? null);
-      if (res.data.active) setActive("teacher-livecc");
+      const newActive = res.data.active as boolean;
+      const newCode   = res.data.session_code ?? null;
+      setIsSessionActive(newActive);
+      setSessionCode(newCode);
+      onSessionChange?.(newActive, newCode);
+      if (newActive) setActive("teacher-livecc");
     } catch {
       Alert.alert("Error", "Could not toggle session. Check your connection.");
     } finally {

@@ -62,7 +62,7 @@ export default function TeacherLiveCC({ setActive }: Props) {
           text:    m.text,
           speaker: "teacher" as const,
           time:    m.sent_at
-            ? new Date(m.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            ? new Date(m.sent_at.endsWith("Z") ? m.sent_at : m.sent_at + "Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         }));
         setLines((prev) => [...prev, ...formatted]);
@@ -81,7 +81,7 @@ export default function TeacherLiveCC({ setActive }: Props) {
           text:        l.message || l.icon_label,
           speaker:     "student" as const,
           time:        l.tapped_at
-            ? new Date(l.tapped_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            ? new Date(l.tapped_at.endsWith("Z") ? l.tapped_at : l.tapped_at + "Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           studentName: l.student_name || "Student",
         }));
@@ -131,7 +131,7 @@ export default function TeacherLiveCC({ setActive }: Props) {
         list.forEach(p => {
           if (!seenParticipantIdsRef.current.has(p.id)) {
             seenParticipantIdsRef.current.add(p.id);
-            const joinFmt = p.joined_at ? new Date(p.joined_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : nowFmt;
+            const joinFmt = p.joined_at ? new Date(p.joined_at.endsWith("Z") ? p.joined_at : p.joined_at + "Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : nowFmt;
             setLines(prev => [...prev, { id: `event-join-${p.id}`, text: `${p.name} joined the session`, speaker: "event", time: joinFmt, eventKind: "join" }]);
           }
         });
