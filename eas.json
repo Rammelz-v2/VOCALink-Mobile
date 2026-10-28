@@ -8,6 +8,9 @@
       "distribution": "internal"
     },
     "preview": {
+      "cache": {
+        "disabled": true
+      },
       "android": {
         "buildType": "apk",
         "env": {
