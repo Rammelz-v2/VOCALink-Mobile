@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { CrossAlertProvider } from '../components/CrossAlert';
+import { ThemeProvider } from '../contexts/ThemeContext';
 
 function RootNavigator() {
   const { token, isLoading } = useAuth();
@@ -38,10 +39,12 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <CrossAlertProvider>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
-    </CrossAlertProvider>
+    <ThemeProvider>
+      <CrossAlertProvider>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </CrossAlertProvider>
+    </ThemeProvider>
   );
 }

@@ -1,43 +1,84 @@
-// contexts/ThemeContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-type ThemeContextType = {
-  isDarkMode: boolean;
-  toggleDarkMode: (value: boolean) => void;
-  theme: {
-    background: string;
-    card: string;
-    text: string;
-    textMuted: string;
-    border: string; // <--- This is what TypeScript was missing!
-  };
+const STORAGE_KEY = 'vocalink-theme';
+
+export type ThemeColors = {
+  bg:           string;
+  surface:      string;
+  border:       string;
+  borderSubtle: string;
+  text:         string;
+  text2:        string;
+  text3:        string;
+  tealLight:    string;
+  purpleLight:  string;
+  input:        string;
 };
 
-const ThemeContext = createContext<ThemeContextType | null>(null);
+export const LIGHT: ThemeColors = {
+  bg:           '#F4F2FF',
+  surface:      '#FFFFFF',
+  border:       '#E2E8F0',
+  borderSubtle: '#F1F5F9',
+  text:         '#0F172A',
+  text2:        '#475569',
+  text3:        '#94A3B8',
+  tealLight:    '#E0F5FC',
+  purpleLight:  '#EEEDFE',
+  input:        '#F1F5F9',
+};
+
+export const DARK: ThemeColors = {
+  bg:           '#0F172A',
+  surface:      '#1E293B',
+  border:       '#334155',
+  borderSubtle: '#1E293B',
+  text:         '#E2E8F0',
+  text2:        '#94A3B8',
+  text3:        '#64748B',
+  tealLight:    'rgba(26,173,220,0.14)',
+  purpleLight:  'rgba(83,74,183,0.16)',
+  input:        '#0F172A',
+};
+
+type ThemeContextType = {
+  isDark:      boolean;
+  toggleTheme: () => void;
+  colors:      ThemeColors;
+};
+
+const ThemeContext = createContext<ThemeContextType>({
+  isDark:      false,
+  toggleTheme: () => {},
+  colors:      LIGHT,
+});
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const systemScheme              = useColorScheme();
+  const [isDark, setIsDark]       = useState<boolean | null>(null);
 
-  const toggleDarkMode = (value: boolean) => setIsDarkMode(value);
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then(saved => {
+      setIsDark(saved !== null ? saved === 'dark' : systemScheme === 'dark');
+    });
+  }, []);
 
-  // Deep OLED-friendly true black palette
-  const theme = {
-    background: isDarkMode ? "#000000" : "#F3F9FF", 
-    card: isDarkMode ? "#111111" : "#FFFFFF",       
-    text: isDarkMode ? "#F8F9FA" : "#1A1A2E",       
-    textMuted: isDarkMode ? "#8E8E93" : "#6B7280",  
-    border: isDarkMode ? "#1C1C1E" : "#EEF7FF",     // <--- Added the border color here too
+  const toggleTheme = async () => {
+    const next = !isDark;
+    setIsDark(next);
+    await AsyncStorage.setItem(STORAGE_KEY, next ? 'dark' : 'light');
   };
 
+  const resolvedDark = isDark ?? (systemScheme === 'dark');
+  const colors       = resolvedDark ? DARK : LIGHT;
+
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, theme }}>
+    <ThemeContext.Provider value={{ isDark: resolvedDark, toggleTheme, colors }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
-export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (!context) throw new Error("useTheme must be used within a ThemeProvider");
-  return context;
-};
+export const useTheme = () => useContext(ThemeContext);

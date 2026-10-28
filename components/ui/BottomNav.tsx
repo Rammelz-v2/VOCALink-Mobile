@@ -7,6 +7,8 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { Colors as C, FontSize, Shadow } from "../../constants/tokens";
+import { useTheme } from "../../contexts/ThemeContext";
+import { useLayout } from "../../hooks/useLayout";
 
 export type TabName = "home" | "board" | "livecc" | "profile";
 
@@ -35,13 +37,15 @@ const AnimatedTabButton: React.FC<{
   isActive: boolean;
   onPress: () => void;
   showBadge: boolean;
-}> = ({ tab, isActive, onPress, showBadge }) => {
+  iconWrapHeight: number;
+  iconWrapWidth: number;
+  emojiSize: number;
+  emojiActiveSize: number;
+  labelSize: number;
+}> = ({ tab, isActive, onPress, showBadge, iconWrapHeight, iconWrapWidth, emojiSize, emojiActiveSize, labelSize }) => {
   const scale = useSharedValue(1);
-  const iconBg = useSharedValue(0);
 
-  useEffect(() => {
-    iconBg.value = withSpring(isActive ? 1 : 0, { damping: 14, stiffness: 160 });
-  }, [isActive]);
+  useEffect(() => {}, [isActive]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -56,16 +60,17 @@ const AnimatedTabButton: React.FC<{
   };
 
   return (
-    <TouchableOpacity
-      onPress={handlePress}
-      activeOpacity={1}
-      style={styles.tab}
-    >
-      <Animated.View style={[styles.iconWrap, isActive && styles.iconActive, animStyle]}>
-        <Text style={[styles.emoji, isActive && styles.emojiActive]}>{tab.emoji}</Text>
+    <TouchableOpacity onPress={handlePress} activeOpacity={1} style={styles.tab}>
+      <Animated.View style={[
+        styles.iconWrap,
+        { width: iconWrapWidth, height: iconWrapHeight },
+        isActive && styles.iconActive,
+        animStyle,
+      ]}>
+        <Text style={{ fontSize: isActive ? emojiActiveSize : emojiSize }}>{tab.emoji}</Text>
         {showBadge && <View style={styles.badge} />}
       </Animated.View>
-      <Text style={[styles.label, isActive && styles.labelActive]}>
+      <Text style={[styles.label, { fontSize: labelSize }, isActive && styles.labelActive]}>
         {tab.label}
       </Text>
       {isActive && <View style={styles.activeDot} />}
@@ -75,17 +80,27 @@ const AnimatedTabButton: React.FC<{
 
 // ── Main nav bar ──────────────────────────────────────────────────────────────
 const BottomNav: React.FC<BottomNavProps> = ({ active, setActive, unread = 0 }) => {
-  const insets     = useSafeAreaInsets();
-  const { user }   = useAuth();
-  const isTeacher  = user?.status === "TEACHER";
+  const insets       = useSafeAreaInsets();
+  const { user }     = useAuth();
+  const { colors }   = useTheme();
+  const { isTablet, isLandscape } = useLayout();
+  const isTeacher    = user?.status === "TEACHER";
 
   const visibleTabs = ALL_TABS.filter(tab => {
     if (isTeacher && (tab.id === "board" || tab.id === "livecc")) return false;
     return true;
   });
 
+  const paddingBottom  = Math.max(insets.bottom, isLandscape ? 4 : 8);
+  const paddingTop     = isTablet ? 14 : (isLandscape ? 6 : 10);
+  const iconWrapHeight = isTablet ? 40 : (isLandscape ? 26 : 32);
+  const iconWrapWidth  = isTablet ? 64 : (isLandscape ? 48 : 52);
+  const emojiSize      = isTablet ? 24 : (isLandscape ? 18 : 19);
+  const emojiActiveSize= isTablet ? 26 : (isLandscape ? 20 : 21);
+  const labelSize      = isTablet ? FontSize.sm : FontSize.xs;
+
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <View style={[styles.container, { paddingBottom, paddingTop, backgroundColor: colors.surface }]}>
       {visibleTabs.map(tab => (
         <AnimatedTabButton
           key={tab.id}
@@ -93,6 +108,11 @@ const BottomNav: React.FC<BottomNavProps> = ({ active, setActive, unread = 0 }) 
           isActive={active === tab.id}
           onPress={() => setActive(tab.id)}
           showBadge={tab.id === "home" && unread > 0}
+          iconWrapHeight={iconWrapHeight}
+          iconWrapWidth={iconWrapWidth}
+          emojiSize={emojiSize}
+          emojiActiveSize={emojiActiveSize}
+          labelSize={labelSize}
         />
       ))}
     </View>

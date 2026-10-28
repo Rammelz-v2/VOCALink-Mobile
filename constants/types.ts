@@ -19,7 +19,7 @@ export interface AACIcon {
 export type AACCategory =
   | "all" | "needs" | "emotions" | "classroom" | "actions"
   | "emergency" | "math" | "communication"
-  | "people" | "places";
+  | "people" | "places" | "countries";
 
 export interface CCLine {
   text: string;

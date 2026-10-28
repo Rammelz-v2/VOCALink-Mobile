@@ -21,7 +21,7 @@
       "package": "com.lacsyy.VOCALinkMobile"
     },
     "web": {
-      "output": "static"
+      "output": "single"
     },
     "plugins": [
       "expo-router",
