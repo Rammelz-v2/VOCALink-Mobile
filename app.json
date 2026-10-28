@@ -29,7 +29,15 @@
       "expo-font",
       "expo-splash-screen",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "-keep class expo.modules.core.interfaces.** { *; }\n-keep class expo.modules.kotlin.types.** { *; }"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
