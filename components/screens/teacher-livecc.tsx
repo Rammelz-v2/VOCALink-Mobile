@@ -16,6 +16,7 @@ import axios from "axios";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../constants/api";
 import { Colors as C, FontSize, Radius, Shadow, Spacing } from "../../constants/tokens";
+import { useTheme } from "../../contexts/ThemeContext";
 
 const POLL_MS = 1500;
 
@@ -30,8 +31,9 @@ interface CCLine {
 }
 
 export default function TeacherLiveCC({ setActive }: Props) {
-  const { token } = useAuth();
-  const scrollRef = useRef<ScrollView>(null);
+  const { token }    = useAuth();
+  const { colors }   = useTheme();
+  const scrollRef    = useRef<ScrollView>(null);
 
   const [lines, setLines]               = useState<CCLine[]>([]);
   const [input, setInput]               = useState("");
@@ -142,13 +144,13 @@ export default function TeacherLiveCC({ setActive }: Props) {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
 
         {/* Header */}
-        <View style={s.header}>
+        <View style={[s.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           <View style={{ flex: 1 }}>
-            <Text style={s.headerTitle}>Live Class Room</Text>
+            <Text style={[s.headerTitle, { color: colors.text }]}>Live Class Room</Text>
             <Text style={s.headerSub}>🟢 Session active — type to broadcast</Text>
           </View>
           <TouchableOpacity onPress={handleEndSession} style={s.endBtn}>
@@ -165,29 +167,29 @@ export default function TeacherLiveCC({ setActive }: Props) {
         >
           {lines.length === 0 ? (
             <View style={s.emptyWrap}>
-              <Text style={s.emptyText}>Nothing yet. Type below to broadcast ↓</Text>
+              <Text style={[s.emptyText, { color: colors.text3 }]}>Nothing yet. Type below to broadcast ↓</Text>
             </View>
           ) : (
             lines.map((line) => {
               if (line.speaker === "teacher") {
                 return (
-                  <View key={line.id} style={s.ccCard}>
+                  <View key={line.id} style={[s.ccCard, { backgroundColor: colors.tealLight }]}>
                     <View style={s.ccTop}>
                       <Text style={s.ccSpeaker}>👨‍🏫 You</Text>
-                      <Text style={s.ccTime}>{line.time}</Text>
+                      <Text style={[s.ccTime, { color: colors.text3 }]}>{line.time}</Text>
                     </View>
-                    <Text style={s.ccText}>{line.text}</Text>
+                    <Text style={[s.ccText, { color: colors.text }]}>{line.text}</Text>
                   </View>
                 );
               }
               // Student reply bubble
               return (
-                <View key={line.id} style={s.replyCard}>
+                <View key={line.id} style={[s.replyCard, { backgroundColor: colors.purpleLight }]}>
                   <View style={s.ccTop}>
                     <Text style={s.replySpeaker}>🎓 {line.studentName || "Student"}</Text>
-                    <Text style={s.ccTime}>{line.time}</Text>
+                    <Text style={[s.ccTime, { color: colors.text3 }]}>{line.time}</Text>
                   </View>
-                  <Text style={s.replyText}>{line.text}</Text>
+                  <Text style={[s.replyText, { color: colors.text }]}>{line.text}</Text>
                 </View>
               );
             })
@@ -195,14 +197,14 @@ export default function TeacherLiveCC({ setActive }: Props) {
         </ScrollView>
 
         {/* Input */}
-        <View style={s.inputContainer}>
+        <View style={[s.inputContainer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
           <TextInput
             value={input}
             onChangeText={setInput}
             placeholder="Type to broadcast…"
-            placeholderTextColor={C.text3}
+            placeholderTextColor={colors.text3}
             multiline
-            style={s.largeInput}
+            style={[s.largeInput, { backgroundColor: colors.input, color: colors.text }]}
           />
           <TouchableOpacity
             onPress={() => broadcastMessage()}

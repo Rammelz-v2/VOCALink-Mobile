@@ -11,6 +11,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../constants/api";
 import { ScreenHeader } from "../ui/ScreenHeader";
 import { FontSize, Radius, Spacing } from "../../constants/tokens";
+import { useTheme } from "../../contexts/ThemeContext";
+import { useLayout } from "../../hooks/useLayout";
 
 const POLL_MS = 1500;
 
@@ -32,6 +34,8 @@ interface LiveCCProps {
 
 const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
   const { token, user } = useAuth();
+  const { colors }      = useTheme();
+  const { isTablet, isLandscape } = useLayout();
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   const [lines,       setLines]       = useState<CCLine[]>([]);
@@ -91,7 +95,9 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
           const withoutDupes = prev.filter(
             (l) => !(l.id.startsWith("local-") && confirmed.has(`${l.name}:${l.text}`)),
           );
-          return [...withoutDupes, ...formatted];
+          const existingIds = new Set(withoutDupes.map((l) => l.id));
+          const newOnly = formatted.filter((f) => !existingIds.has(f.id));
+          return [...withoutDupes, ...newOnly];
         });
         lastTsRef.current = msgs[msgs.length - 1].sent_at;
       }
@@ -111,7 +117,7 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
   // ── No session gate ───────────────────────────────────────────────────────
   if (!sessionCode) {
     return (
-      <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
         <Animated.View entering={FadeIn.duration(400)} style={s.noSessionScreen}>
           <Text style={s.noSessionEmoji}>🔒</Text>
           <Text style={s.noSessionTitle}>No Active Session</Text>
@@ -130,88 +136,98 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
     );
   }
 
-  const visible = lines.slice(-6);
+  const captionFeed = (
+    <View style={s.ccContainer}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={s.feed}
+        showsVerticalScrollIndicator={true}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {lines.length === 0 ? (
+          <Animated.View entering={FadeIn.duration(500)} style={s.emptyWrap}>
+            <Text style={s.emptyEmoji}>📡</Text>
+            <Text style={s.emptyText}>Waiting for {teacherName} to speak…</Text>
+          </Animated.View>
+        ) : (
+          lines.map((line, idx) => {
+            const isLatest  = idx === lines.length - 1;
+            const isStudent = line.speaker === "student";
+            return (
+              <Animated.View
+                key={line.id}
+                entering={isLatest ? FadeInUp.duration(280).springify() : undefined}
+                style={s.ccRow}
+              >
+                {isLatest && (
+                  <View style={[s.activeBar, isStudent && s.activeBarStudent]} />
+                )}
+                <Text style={s.ccLine}>
+                  <Text style={[s.speakerLabel, isStudent ? s.speakerStudent : s.speakerTeacher]}>
+                    {line.name}:{" "}
+                  </Text>
+                  <Text style={[
+                    s.ccText,
+                    isLatest && s.ccTextLatest,
+                    isTablet && { fontSize: 28, lineHeight: 40 },
+                    isLatest && isTablet && { fontSize: 34, lineHeight: 46 },
+                  ]}>
+                    {line.text}
+                    {line.failed ? "  ⚠️" : ""}
+                  </Text>
+                </Text>
+              </Animated.View>
+            );
+          })
+        )}
+      </ScrollView>
+    </View>
+  );
+
+  const controls = (
+    <View style={[s.bottomArea, isTablet && isLandscape && s.sidePanel]}>
+      <View style={s.statusRow}>
+        <Animated.View style={[s.liveOrb, !connected && s.liveOrbOff, dotStyle]} />
+        <Text style={[s.statusText, isTablet && { fontSize: FontSize.sm }]}>
+          {connected ? `Live · ${teacherName}  ·  Code: ${sessionCode}` : "Connecting to class…"}
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={s.aacBtn}
+        onPress={() => setActive?.("board")}
+        activeOpacity={0.82}
+      >
+        <View style={s.aacBtnIconWrap}>
+          <Text style={{ fontSize: isTablet ? 32 : 26 }}>🗣️</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[s.aacBtnTitle, isTablet && { fontSize: FontSize.lg }]}>Open AAC Board</Text>
+          <Text style={s.aacBtnSub}>Build a full message for your teacher</Text>
+        </View>
+        <Text style={s.aacBtnArrow}>›</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
-
       <ScreenHeader
         title="Live Captions"
         subtitle={connected ? `● Live · ${teacherName}` : "○ Connecting…"}
       />
 
-      {/* ── Caption feed ─────────────────────────────────────────────── */}
-      <View style={s.ccContainer}>
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={s.feed}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-        >
-          {visible.length === 0 ? (
-            <Animated.View entering={FadeIn.duration(500)} style={s.emptyWrap}>
-              <Text style={s.emptyEmoji}>📡</Text>
-              <Text style={s.emptyText}>Waiting for {teacherName} to speak…</Text>
-            </Animated.View>
-          ) : (
-            visible.map((line, idx) => {
-              const isLatest  = idx === visible.length - 1;
-              const isStudent = line.speaker === "student";
-              const opacity   = isLatest
-                ? 1
-                : 0.3 + (idx / Math.max(visible.length - 1, 1)) * 0.5;
-              return (
-                <Animated.View
-                  key={line.id}
-                  entering={isLatest ? FadeInUp.duration(280).springify() : undefined}
-                  style={[s.ccRow, { opacity }]}
-                >
-                  {isLatest && (
-                    <View style={[s.activeBar, isStudent && s.activeBarStudent]} />
-                  )}
-                  <Text style={s.ccLine}>
-                    <Text style={[s.speakerLabel, isStudent ? s.speakerStudent : s.speakerTeacher]}>
-                      {line.name}:{" "}
-                    </Text>
-                    <Text style={[s.ccText, isLatest && s.ccTextLatest]}>
-                      {line.text}
-                      {line.failed ? "  ⚠️" : ""}
-                    </Text>
-                  </Text>
-                </Animated.View>
-              );
-            })
-          )}
-        </ScrollView>
-      </View>
-
-      {/* ── Bottom area ──────────────────────────────────────────────── */}
-      <View style={s.bottomArea}>
-
-        <View style={s.statusRow}>
-          <Animated.View style={[s.liveOrb, !connected && s.liveOrbOff, dotStyle]} />
-          <Text style={s.statusText}>
-            {connected ? `Live · ${teacherName}  ·  Code: ${sessionCode}` : "Connecting to class…"}
-          </Text>
+      {isTablet && isLandscape ? (
+        <View style={s.landscapeRow}>
+          {captionFeed}
+          {controls}
         </View>
-
-        <TouchableOpacity
-          style={s.aacBtn}
-          onPress={() => setActive?.("board")}
-          activeOpacity={0.82}
-        >
-          <View style={s.aacBtnIconWrap}>
-            <Text style={{ fontSize: 26 }}>🗣️</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.aacBtnTitle}>Open AAC Board</Text>
-            <Text style={s.aacBtnSub}>Build a full message for your teacher</Text>
-          </View>
-          <Text style={s.aacBtnArrow}>›</Text>
-        </TouchableOpacity>
-
-      </View>
-
+      ) : (
+        <>
+          {captionFeed}
+          {controls}
+        </>
+      )}
     </SafeAreaView>
   );
 };
@@ -231,8 +247,8 @@ const s = StyleSheet.create({
   noSessionBtnText:{ fontSize: FontSize.base, fontWeight: "800", color: "#FFF" },
 
   // Caption area
-  ccContainer: { flex: 1, justifyContent: "flex-end" },
-  feed:        { padding: Spacing.lg, gap: 16, justifyContent: "flex-end", flexGrow: 1 },
+  ccContainer: { flex: 1 },
+  feed:        { padding: Spacing.lg, gap: 16, flexGrow: 1 },
 
   emptyWrap:  { alignItems: "center", marginTop: 60, gap: 12 },
   emptyEmoji: { fontSize: 36, opacity: 0.5 },
@@ -275,6 +291,16 @@ const s = StyleSheet.create({
   aacBtnTitle: { fontSize: FontSize.md, fontWeight: "800", color: "#F3F4F6" },
   aacBtnSub:   { fontSize: FontSize.xs, color: "#6B7280", marginTop: 3, fontWeight: "500" },
   aacBtnArrow: { fontSize: 26, color: "#534AB7", fontWeight: "300", marginRight: 2 },
+
+  // Tablet landscape split layout
+  landscapeRow: { flex: 1, flexDirection: "row" },
+  sidePanel: {
+    width: 320,
+    borderTopWidth: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: "#2D2F34",
+    justifyContent: "center",
+  },
 });
 
 export default LiveCC;
