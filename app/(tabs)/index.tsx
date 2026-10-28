@@ -13,11 +13,13 @@ import ProfileUI     from "../../components/screens/profile";
 import BottomNav, { TabName } from "../../components/ui/BottomNav";
 import { Colors as C, FontSize, Radius, Shadow } from "../../constants/tokens";
 import { API_BASE_URL } from "../../constants/api";
+import { useLayout } from "../../hooks/useLayout";
 
 export type ExtendedTabName = TabName | "teacher-livecc" | "sessioning";
 
 export default function TabsLayout() {
   const { user, token } = useAuth();
+  const { navHeight } = useLayout();
   const isTeacher = user?.status === "TEACHER";
 
   const [active,        setActive]        = useState<ExtendedTabName>("home");
@@ -110,9 +112,14 @@ export default function TabsLayout() {
   }, [token]);
 
   const leaveSession = useCallback(() => {
+    if (token) {
+      axios.post(`${API_BASE_URL}/sessions/leave/`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
     setSessionCode(null);
     setJoinError(null);
-  }, []);
+  }, [token]);
 
   const handleSendToTeacher = (msg: string) => {
     console.log("Student sent:", msg);
@@ -162,7 +169,7 @@ export default function TabsLayout() {
 
       {showReturnPill && (
         <TouchableOpacity
-          style={styles.returnPill}
+          style={[styles.returnPill, { bottom: navHeight + 8 }]}
           onPress={() => setActive("teacher-livecc")}
           activeOpacity={0.88}
         >
@@ -185,7 +192,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   screen:    { flex: 1 },
   returnPill: {
-    position: "absolute", bottom: 72, alignSelf: "center",
+    position: "absolute", alignSelf: "center",
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "#047857",
     paddingHorizontal: 20, paddingVertical: 12,

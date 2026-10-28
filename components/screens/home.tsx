@@ -10,9 +10,11 @@ import axios from "axios";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../constants/api";
 import { Colors as C, FontSize, Radius, Shadow, Spacing } from "../../constants/tokens";
+import { useTheme } from "../../contexts/ThemeContext";
 import type { TabName } from "../ui/BottomNav";
 import { Badge } from "../ui/shared";
 import { ScreenHeader } from "../ui/ScreenHeader";
+import { useLayout } from "../../hooks/useLayout";
 
 import TeacherHome from "./teacher-home";
 
@@ -25,7 +27,6 @@ interface HomeProps {
   joinError?: string | null;
 }
 
-// A big tappable dashboard tile — replaces the old plain list row.
 const DashboardTile: React.FC<{
   emoji: string;
   label: string;
@@ -33,52 +34,56 @@ const DashboardTile: React.FC<{
   color: string;
   bg: string;
   onPress: () => void;
-}> = ({ emoji, label, sub, color, bg, onPress }) => (
-  <TouchableOpacity
-    onPress={() => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      onPress();
-    }}
-    activeOpacity={0.85}
-    style={[styles.tile, { backgroundColor: bg }]}
-  >
-    <View style={[styles.tileIconWrap, { backgroundColor: color }]}>
-      <Text style={styles.tileEmoji}>{emoji}</Text>
-    </View>
-    <Text style={styles.tileLabel}>{label}</Text>
-    <Text style={styles.tileSub}>{sub}</Text>
-  </TouchableOpacity>
-);
+  large?: boolean;
+}> = ({ emoji, label, sub, color, bg, onPress, large }) => {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
+      activeOpacity={0.85}
+      style={[styles.tile, { backgroundColor: bg }]}
+    >
+      <View style={[styles.tileIconWrap, { backgroundColor: color }, large && { width: 56, height: 56, borderRadius: 16 }]}>
+        <Text style={[styles.tileEmoji, large && { fontSize: 30 }]}>{emoji}</Text>
+      </View>
+      <Text style={[styles.tileLabel, large && { fontSize: FontSize.lg }, { color: colors.text }]}>{label}</Text>
+      <Text style={[styles.tileSub, large && { fontSize: FontSize.sm }, { color: colors.text3 }]}>{sub}</Text>
+    </TouchableOpacity>
+  );
+};
 
-// Stats pills should stay compact — if grade_level includes a section
-// ("Grade 5 - Section Acasia"), just show the grade part here so the pill
-// doesn't wrap to two lines and throw off the row's height.
 const shortGrade = (value?: string | null) => {
   if (!value) return "—";
   return value.split(/\s*-\s*Section/i)[0].trim();
 };
 
-// Small stat pill for the overview strip at the top of the dashboard.
-const StatCard: React.FC<{ emoji: string; value: string; label: string }> = ({ emoji, value, label }) => (
-  <View style={styles.statCard}>
-    <Text style={styles.statEmoji}>{emoji}</Text>
-    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </View>
-);
-
-// One row in the Recent Activity list.
-const ActivityRow: React.FC<{ emoji: string; text: string; time: string }> = ({ emoji, text, time }) => (
-  <View style={styles.activityRow}>
-    <View style={styles.activityIconWrap}>
-      <Text style={styles.activityIcon}>{emoji}</Text>
+const StatCard: React.FC<{ emoji: string; value: string; label: string; large?: boolean }> = ({ emoji, value, label, large }) => {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.statCard, large && { minHeight: 100, paddingVertical: 18 }, { backgroundColor: colors.surface }]}>
+      <Text style={[styles.statEmoji, large && { fontSize: 26 }]}>{emoji}</Text>
+      <Text style={[styles.statValue, large && { fontSize: 20 }, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={[styles.statLabel, large && { fontSize: FontSize.sm }, { color: colors.text3 }]}>{label}</Text>
     </View>
-    <Text style={styles.activityText} numberOfLines={1}>{text}</Text>
-    <Text style={styles.activityTime}>{time}</Text>
-  </View>
-);
+  );
+};
 
-// Rotates daily so the card isn't static — no backend needed.
+const ActivityRow: React.FC<{ emoji: string; text: string; time: string }> = ({ emoji, text, time }) => {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.activityRow, { borderBottomColor: colors.borderSubtle }]}>
+      <View style={[styles.activityIconWrap, { backgroundColor: colors.borderSubtle }]}>
+        <Text style={styles.activityIcon}>{emoji}</Text>
+      </View>
+      <Text style={[styles.activityText, { color: colors.text }]} numberOfLines={1}>{text}</Text>
+      <Text style={[styles.activityTime, { color: colors.text3 }]}>{time}</Text>
+    </View>
+  );
+};
+
 const TIPS = [
   "Tap and hold an icon on the AAC Board to hear it spoken slowly.",
   "You can build a full sentence by tapping several icons in a row.",
@@ -96,6 +101,8 @@ const Home: React.FC<HomeProps> = ({
   joinError,
 }) => {
   const { user, token } = useAuth();
+  const { colors }      = useTheme();
+  const { isTablet, isLandscape, hPad } = useLayout();
   const [codeInput, setCodeInput] = useState("");
   const [recentActivity, setRecentActivity] = useState<
     { id: string | number; emoji: string; text: string; time: string }[]
@@ -120,8 +127,6 @@ const Home: React.FC<HomeProps> = ({
     return <TeacherHome setActive={setActive} />;
   }
 
-  // --- EVERYTHING BELOW THIS LINE ONLY RUNS FOR STUDENTS ---
-
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const rawUsername = user?.username ?? "";
@@ -131,181 +136,216 @@ const Home: React.FC<HomeProps> = ({
     (!usernameIsEmail ? rawUsername : rawUsername.split("@")[0]) ||
     "Student";
 
+  // ── Section fragments ─────────────────────────────────────────────────────
+
+  const sessionSection = !sessionCode ? (
+    <Animated.View entering={FadeIn.duration(350)} style={[styles.joinCard, { marginHorizontal: hPad, backgroundColor: colors.surface }]}>
+      <View style={styles.joinHeader}>
+        <View style={styles.joinIconWrap}>
+          <Text style={{ fontSize: 26 }}>📡</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.joinTitle, { color: colors.text }]}>Join a Class Session</Text>
+          <Text style={[styles.joinSub, { color: colors.text3 }]}>Enter the code your teacher shared</Text>
+        </View>
+      </View>
+      <TextInput
+        style={[styles.joinInput, { backgroundColor: colors.input, color: colors.text }]}
+        value={codeInput}
+        onChangeText={(t) => setCodeInput(t.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+        placeholder="e.g. ABC123"
+        placeholderTextColor={colors.text3}
+        autoCapitalize="characters"
+        maxLength={8}
+        autoCorrect={false}
+      />
+      {joinError ? (
+        <View style={styles.joinErrorRow}>
+          <Text style={styles.joinError}>⚠️  {joinError}</Text>
+        </View>
+      ) : null}
+      <TouchableOpacity
+        style={[styles.joinBtn, (!codeInput.trim() || joining) && styles.joinBtnOff]}
+        disabled={!codeInput.trim() || joining}
+        activeOpacity={0.85}
+        onPress={async () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          const result = await joinSession?.(codeInput);
+          if (result?.ok) {
+            setCodeInput("");
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        }}
+      >
+        {joining
+          ? <ActivityIndicator color="#fff" />
+          : <Text style={styles.joinBtnText}>Join Session →</Text>
+        }
+      </TouchableOpacity>
+    </Animated.View>
+  ) : (
+    <Animated.View entering={FadeIn.duration(350)} style={{ marginHorizontal: hPad }}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setActive("livecc");
+        }}
+        style={styles.activeClassBanner}
+      >
+        <View style={styles.activeClassTop}>
+          <Text style={styles.activeClassIcon}>🟢</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeClassTitle}>Session Active!</Text>
+            <Text style={styles.activeClassSub}>Code: {sessionCode}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation?.(); leaveSession?.(); }}
+            style={styles.leaveBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.leaveBtnText}>Leave</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.activeClassBtn}>
+          <Text style={styles.activeClassBtnText}>Go to Live CC Room →</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
+  const statsSection = (
+    <View style={[styles.statsRow, { paddingHorizontal: hPad }]}>
+      {[
+        { emoji: "📅", value: shortGrade(user?.grade_level), label: "Grade" },
+        { emoji: "🔔", value: sessionCode ? "Live" : "None", label: "Session" },
+        { emoji: "🟢", value: "Online", label: "Status" },
+      ].map((stat, i) => (
+        <Animated.View key={stat.label} entering={FadeInDown.delay(i * 70).springify()} style={{ flex: 1 }}>
+          <StatCard emoji={stat.emoji} value={stat.value} label={stat.label} large={isTablet} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+
+  const dashboardSection = (
+    <View style={[styles.section, { paddingHorizontal: hPad }]}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Dashboard</Text>
+      <View style={styles.tileGrid}>
+        {[
+          { emoji: "🗣", label: "AAC Board", sub: "Tap icons to communicate", color: C.purple, bg: C.purpleLight, tab: "board" as const },
+          { emoji: "📝", label: "Live Captions", sub: "See what teacher is saying", color: "#0E8DB8", bg: "#E0F5FC", tab: "livecc" as const },
+        ].map((tile, i) => (
+          <Animated.View
+            key={tile.tab}
+            entering={FadeInDown.delay(150 + i * 80).springify()}
+            style={{ flexBasis: "47%", flexGrow: 1 }}
+          >
+            <DashboardTile
+              emoji={tile.emoji}
+              label={tile.label}
+              sub={tile.sub}
+              color={tile.color}
+              bg={tile.bg}
+              onPress={() => setActive(tile.tab)}
+              large={isTablet}
+            />
+          </Animated.View>
+        ))}
+      </View>
+    </View>
+  );
+
+  const activitySection = (
+    <Animated.View entering={FadeInDown.delay(300).springify()} style={[styles.section, { paddingHorizontal: hPad }]}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
+      <View style={[styles.activityCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {recentActivity.length > 0 ? (
+          recentActivity.slice(0, 4).map((a) => (
+            <ActivityRow key={a.id} emoji={a.emoji} text={a.text} time={a.time} />
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>💬</Text>
+            <Text style={styles.emptyText}>Nothing here yet — start using the AAC Board!</Text>
+          </View>
+        )}
+      </View>
+    </Animated.View>
+  );
+
+  const tipSection = (
+    <Animated.View entering={FadeInDown.delay(380).springify()} style={[styles.section, { paddingHorizontal: hPad }]}>
+      <View style={[styles.tipCard, { backgroundColor: colors.purpleLight }]}>
+        <Text style={styles.tipEmoji}>💡</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.tipTitle}>Tip of the Day</Text>
+          <Text style={styles.tipText}>
+            {TIPS[new Date().getDate() % TIPS.length]}
+          </Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+
+  const infoSection = (
+    <Animated.View entering={FadeInDown.delay(450).springify()} style={[styles.infoCard, { marginHorizontal: hPad, backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Text style={[styles.infoTitle, { color: colors.text }]}>My Info</Text>
+      {[
+        { icon: "👤", lbl: "Name", val: displayName },
+        { icon: "🏷", lbl: "Username", val: user?.username ?? "—" },
+        { icon: "📚", lbl: "Grade", val: user?.grade_level ?? "—" },
+      ].map((r, i) => (
+        <View key={i} style={[styles.infoRow, { borderBottomColor: colors.borderSubtle }]}>
+          <Text style={styles.infoIcon}>{r.icon}</Text>
+          <Text style={[styles.infoLbl, { color: colors.text3 }]}>{r.lbl}</Text>
+          <Text style={[styles.infoVal, { color: colors.text }]}>{r.val}</Text>
+        </View>
+      ))}
+    </Animated.View>
+  );
+
+  // ── Tablet landscape: two-column split ───────────────────────────────────
+  if (isTablet && isLandscape) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
+        <ScreenHeader
+          title={`${greeting}, ${displayName} 👋`}
+          subtitle="VocaLink — Your voice matters"
+          right={<Badge color="green">Online</Badge>}
+        />
+        <View style={styles.splitRow}>
+          <ScrollView style={styles.splitCol} contentContainerStyle={styles.splitColContent} showsVerticalScrollIndicator={false}>
+            {sessionSection}
+            {statsSection}
+            {infoSection}
+          </ScrollView>
+          <View style={[styles.splitDivider, { backgroundColor: colors.border }]} />
+          <ScrollView style={styles.splitCol} contentContainerStyle={styles.splitColContent} showsVerticalScrollIndicator={false}>
+            {dashboardSection}
+            {activitySection}
+            {tipSection}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Phone / tablet portrait: single column ───────────────────────────────
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           title={`${greeting}, ${displayName} 👋`}
           subtitle="VocaLink — Your voice matters"
           right={<Badge color="green">Online</Badge>}
         />
-
-        {/* SESSION — join form or active banner */}
-        {!sessionCode ? (
-          /* ── Join form ──────────────────────────────────────────────── */
-          <Animated.View entering={FadeIn.duration(350)} style={styles.joinCard}>
-            <View style={styles.joinHeader}>
-              <View style={styles.joinIconWrap}>
-                <Text style={{ fontSize: 26 }}>📡</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.joinTitle}>Join a Class Session</Text>
-                <Text style={styles.joinSub}>Enter the code your teacher shared</Text>
-              </View>
-            </View>
-
-            <TextInput
-              style={styles.joinInput}
-              value={codeInput}
-              onChangeText={(t) => setCodeInput(t.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
-              placeholder="e.g. ABC123"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="characters"
-              maxLength={8}
-              autoCorrect={false}
-            />
-
-            {joinError ? (
-              <View style={styles.joinErrorRow}>
-                <Text style={styles.joinError}>⚠️  {joinError}</Text>
-              </View>
-            ) : null}
-
-            <TouchableOpacity
-              style={[styles.joinBtn, (!codeInput.trim() || joining) && styles.joinBtnOff]}
-              disabled={!codeInput.trim() || joining}
-              activeOpacity={0.85}
-              onPress={async () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                const result = await joinSession?.(codeInput);
-                if (result?.ok) {
-                  setCodeInput("");
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }
-              }}
-            >
-              {joining
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.joinBtnText}>Join Session →</Text>
-              }
-            </TouchableOpacity>
-          </Animated.View>
-        ) : (
-          /* ── Active session banner ──────────────────────────────────── */
-          <Animated.View entering={FadeIn.duration(350)}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setActive("livecc");
-              }}
-              style={styles.activeClassBanner}
-            >
-              <View style={styles.activeClassTop}>
-                <Text style={styles.activeClassIcon}>🟢</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.activeClassTitle}>Session Active!</Text>
-                  <Text style={styles.activeClassSub}>Code: {sessionCode}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={(e) => { e.stopPropagation?.(); leaveSession?.(); }}
-                  style={styles.leaveBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.leaveBtnText}>Leave</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.activeClassBtn}>
-                <Text style={styles.activeClassBtnText}>Go to Live CC Room →</Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        {/* OVERVIEW STRIP */}
-        <View style={styles.statsRow}>
-          {[
-            { emoji: "📅", value: shortGrade(user?.grade_level), label: "Grade" },
-            { emoji: "🔔", value: sessionCode ? "Live" : "None", label: "Session" },
-            { emoji: "🟢", value: "Online", label: "Status" },
-          ].map((stat, i) => (
-            <Animated.View key={stat.label} entering={FadeInDown.delay(i * 70).springify()} style={{ flex: 1 }}>
-              <StatCard emoji={stat.emoji} value={stat.value} label={stat.label} />
-            </Animated.View>
-          ))}
-        </View>
-
-        {/* MAIN DASHBOARD ACTIONS */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dashboard</Text>
-          <View style={styles.tileGrid}>
-            {[
-              { emoji: "🗣", label: "AAC Board", sub: "Tap icons to communicate", color: C.purple, bg: C.purpleLight, tab: "board" as const },
-              { emoji: "📝", label: "Live Captions", sub: "See what teacher is saying", color: "#0E8DB8", bg: "#E0F5FC", tab: "livecc" as const },
-            ].map((tile, i) => (
-              <Animated.View
-                key={tile.tab}
-                entering={FadeInDown.delay(150 + i * 80).springify()}
-                style={{ flexBasis: "47%", flexGrow: 1 }}
-              >
-                <DashboardTile
-                  emoji={tile.emoji}
-                  label={tile.label}
-                  sub={tile.sub}
-                  color={tile.color}
-                  bg={tile.bg}
-                  onPress={() => setActive(tile.tab)}
-                />
-              </Animated.View>
-            ))}
-          </View>
-        </View>
-
-        {/* RECENT ACTIVITY */}
-        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
-          <View style={styles.activityCard}>
-            {recentActivity.length > 0 ? (
-              recentActivity.slice(0, 4).map((a) => (
-                <ActivityRow key={a.id} emoji={a.emoji} text={a.text} time={a.time} />
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyEmoji}>💬</Text>
-                <Text style={styles.emptyText}>Nothing here yet — start using the AAC Board!</Text>
-              </View>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* TIP OF THE DAY */}
-        <Animated.View entering={FadeInDown.delay(380).springify()} style={styles.section}>
-          <View style={styles.tipCard}>
-            <Text style={styles.tipEmoji}>💡</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.tipTitle}>Tip of the Day</Text>
-              <Text style={styles.tipText}>
-                {TIPS[new Date().getDate() % TIPS.length]}
-              </Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* INFO CARD */}
-        <Animated.View entering={FadeInDown.delay(450).springify()} style={[styles.section, styles.infoCard]}>
-          <Text style={styles.infoTitle}>My Info</Text>
-          {[
-            { icon: "👤", lbl: "Name", val: displayName },
-            { icon: "🏷", lbl: "Username", val: user?.username ?? "—" },
-            { icon: "📚", lbl: "Grade", val: user?.grade_level ?? "—" },
-          ].map((r, i) => (
-            <View key={i} style={styles.infoRow}>
-              <Text style={styles.infoIcon}>{r.icon}</Text>
-              <Text style={styles.infoLbl}>{r.lbl}</Text>
-              <Text style={styles.infoVal}>{r.val}</Text>
-            </View>
-          ))}
-        </Animated.View>
+        {sessionSection}
+        {statsSection}
+        {dashboardSection}
+        {activitySection}
+        {tipSection}
+        {infoSection}
       </ScrollView>
     </SafeAreaView>
   );
@@ -315,9 +355,15 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: { paddingBottom: 40 },
 
+  // Tablet landscape two-column split
+  splitRow: { flex: 1, flexDirection: "row" },
+  splitCol: { flex: 1 },
+  splitColContent: { paddingBottom: 40 },
+  splitDivider: { width: 1, backgroundColor: C.gray2 },
+
   // ── Join form ──────────────────────────────────────────────────────────────
   joinCard: {
-    margin: Spacing.lg,
+    marginVertical: Spacing.lg,
     backgroundColor: C.white,
     borderRadius: Radius.xl,
     padding: Spacing.lg,
@@ -363,7 +409,7 @@ const styles = StyleSheet.create({
   // ── Active session banner ──────────────────────────────────────────────────
   leaveBtn:     { backgroundColor: "rgba(255,255,255,0.25)", borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6 },
   leaveBtnText: { fontSize: FontSize.xs, fontWeight: "700", color: C.white },
-  activeClassBanner: { margin: Spacing.lg, padding: Spacing.lg, backgroundColor: "#10B981", borderRadius: Radius.lg, ...Shadow.md },
+  activeClassBanner: { marginVertical: Spacing.lg, padding: Spacing.lg, backgroundColor: "#10B981", borderRadius: Radius.lg, ...Shadow.md },
   activeClassTop: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
   activeClassIcon: { fontSize: 28 },
   activeClassTitle: { fontSize: FontSize.lg, fontWeight: "800", color: C.white },
@@ -375,7 +421,6 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: "row",
     gap: 10,
-    paddingHorizontal: Spacing.lg,
     marginTop: Spacing.md,
   },
   statCard: {
@@ -397,13 +442,13 @@ const styles = StyleSheet.create({
   statValue: { fontSize: FontSize.md, fontWeight: "800", color: C.text },
   statLabel: { fontSize: FontSize.xs, color: C.text3, fontWeight: "600" },
 
-  section: { padding: Spacing.lg, gap: 14 },
+  section: { paddingVertical: Spacing.lg, gap: 14 },
   sectionTitle: {
     fontSize: FontSize.lg, fontWeight: "800", color: C.text, letterSpacing: -0.5,
     borderLeftWidth: 3, borderLeftColor: "#7C5CFC", paddingLeft: 10,
   },
 
-  // Dashboard tile grid (replaces old Quick Express + list)
+  // Dashboard tile grid
   tileGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -427,7 +472,15 @@ const styles = StyleSheet.create({
   tileLabel: { fontSize: FontSize.md, fontWeight: "800", color: C.text },
   tileSub: { fontSize: FontSize.xs, color: C.text3, fontWeight: "500" },
 
-  infoCard: { marginHorizontal: Spacing.lg, marginBottom: Spacing.lg, backgroundColor: C.white, borderRadius: Radius.lg, padding: Spacing.lg, borderWidth: 1, borderColor: C.gray2, ...Shadow.sm },
+  infoCard: {
+    marginBottom: Spacing.lg,
+    backgroundColor: C.white,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: C.gray2,
+    ...Shadow.sm,
+  },
   infoTitle: { fontSize: FontSize.md, fontWeight: "700", color: C.text, marginBottom: 12 },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.gray },
   infoIcon: { fontSize: 20 },
