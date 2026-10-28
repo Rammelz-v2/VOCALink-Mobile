@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  PanResponder,
   Pressable, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
-  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, {
@@ -17,12 +17,12 @@ import { AAC_ICONS } from "../../constants/mockdata";
 import { API_BASE_URL } from "../../constants/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { Colors as C, FontSize, Radius, Shadow, Spacing } from "../../constants/tokens";
+import { useTheme } from "../../contexts/ThemeContext";
 import type { AACCategory, AACIcon } from "../../constants/types";
 import { ScreenHeader } from "../ui/ScreenHeader";
+import { useLayout } from "../../hooks/useLayout";
 
-const PAD  = 16;
-const GAP  = 14;
-const COLS = 3;
+const GAP = 12;
 
 console.log("icons:", AAC_ICONS.length, AAC_ICONS.filter(i => i.category === "math").length);
 // Chunk array into rows of N
@@ -63,6 +63,7 @@ const CATEGORIES: { id: AACCategory; label: string; emoji: string; color: string
   { id: "places",        label: "Places",    emoji: "📍", color: "#0D9488" },
   { id: "math",          label: "Math",      emoji: "➕", color: "#2563EB" },
   { id: "emergency",     label: "Emergency", emoji: "🚨", color: "#DC2626" },
+  { id: "countries",     label: "Countries", emoji: "🌍", color: "#0369A1" },
 ];
 
 // ── Animated AAC cell ─────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ const AACCell: React.FC<{
         style={[s.cellBase, { width: size, height: size + 30, backgroundColor: icon.bg }]}
       >
         <Text style={{ fontSize: emojiSize }}>{icon.emoji}</Text>
-        <Text style={[s.cellLabel, { width: size - 8 }]} numberOfLines={1}>{icon.label}</Text>
+        <Text style={[s.cellLabel, { width: size - 8, color: "#0F172A" }]} numberOfLines={1}>{icon.label}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -104,10 +105,31 @@ interface AACBoardProps {
 
 const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => {
   const { token, user } = useAuth();
-  const { width: SW } = useWindowDimensions();
+  const { colors }      = useTheme();
+  const { sw: SW, aacCols: COLS, hPad: PAD, isTablet, isLandscape } = useLayout();
   const CELL     = Math.floor((SW - PAD * 2 - GAP * (COLS - 1)) / COLS);
-  const EMOJI_SZ = Math.floor(CELL * 0.44);
+  const EMOJI_SZ = Math.floor(CELL * (isTablet ? 0.38 : 0.44));
   const [category, setCategory] = useState<AACCategory>("all");
+  const categoryRef = useRef<AACCategory>("all");
+  useEffect(() => { categoryRef.current = category; }, [category]);
+
+  const swipePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 15 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
+      onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dx) < 60) return;
+        const idx = CATEGORIES.findIndex(c => c.id === categoryRef.current);
+        if (g.dx < 0 && idx < CATEGORIES.length - 1) {
+          setCategory(CATEGORIES[idx + 1].id);
+          Haptics.selectionAsync();
+        } else if (g.dx > 0 && idx > 0) {
+          setCategory(CATEGORIES[idx - 1].id);
+          Haptics.selectionAsync();
+        }
+      },
+    })
+  ).current;
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [sent, setSent]         = useState(false);
@@ -162,7 +184,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       axios.post(
         `${API_BASE_URL}/requests/`,
-        { request_type: requestType, note: `${icon.emoji} ${icon.label}` },
+        { request_type: requestType, note: `${icon.emoji} ${icon.label}`, session_code: sessionCode ?? undefined },
         { headers: { Authorization: `Bearer ${token}` } }
       ).then(() => {
         setRequestSent(icon.label);
@@ -202,7 +224,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     // /api/sessions/log/ used to run here too and created a duplicate row
     // for the same message every time a session was active.
     axios.post(`${API_BASE_URL}/logs/`,
-      { icon_id: "message", icon_label: messageText, message: messageText },
+      { icon_id: "message", icon_label: messageText, message: messageText, session_code: sessionCode ?? undefined },
       { headers }
     ).catch(() => {});
 
@@ -213,12 +235,12 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   // ── No session → show waiting screen ────────────────────────────────────
   if (!sessionCode) {
     return (
-      <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right", "bottom"]}>
         <ScreenHeader title="AAC Board" subtitle="Waiting for session..." />
         <View style={s.noSessionWrap}>
           <Text style={s.noSessionEmoji}>⏳</Text>
-          <Text style={s.noSessionTitle}>No Active Session</Text>
-          <Text style={s.noSessionSub}>
+          <Text style={[s.noSessionTitle, { color: colors.text }]}>No Active Session</Text>
+          <Text style={[s.noSessionSub, { color: colors.text3 }]}>
             Wait for your teacher to start a session.{"\n"}
             The board will unlock automatically.
           </Text>
@@ -228,7 +250,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   }
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right", "bottom"]}>
 
       {/* ── Header ── */}
       <ScreenHeader
@@ -252,11 +274,11 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       )}
 
       {/* ── Message builder ── */}
-      <View style={s.builder}>
+      <View style={[s.builder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {selected.length === 0 ? (
           <View style={s.builderEmpty}>
             <Text style={s.builderEmptyEmoji}>👆</Text>
-            <Text style={s.builderEmptyText}>Tap icons to build your message</Text>
+            <Text style={[s.builderEmptyText, { color: colors.text3 }]}>Tap icons to build your message</Text>
           </View>
         ) : (
           <>
@@ -276,14 +298,14 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <Text style={s.messagePreview} numberOfLines={1}>"{messageText}"</Text>
+            <Text style={[s.messagePreview, { color: colors.text2 }]} numberOfLines={1}>"{messageText}"</Text>
           </>
         )}
       </View>
 
       {/* ── LSTM Smart Suggestions ── */}
       {predictions.length > 0 && (
-        <View style={s.predictWrap}>
+        <View style={[s.predictWrap, { backgroundColor: colors.purpleLight }]}>
           <View style={s.predictHeader}>
             <Text style={s.predictTitle}>✨ Suggested Next</Text>
             <Text style={s.predictBadge}>LSTM</Text>
@@ -317,7 +339,8 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       {/* ── Category tabs ── */}
       <ScrollView
         horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.catRow} style={s.catWrap}
+        contentContainerStyle={[s.catRow, { paddingHorizontal: PAD }]}
+        style={s.catWrap}
       >
         {CATEGORIES.map(cat => {
           const active = category === cat.id;
@@ -326,17 +349,22 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
               key={cat.id}
               onPress={() => { Haptics.selectionAsync(); setCategory(cat.id); }}
               activeOpacity={0.8}
-              style={[s.catTab, active && { backgroundColor: cat.color, borderColor: cat.color }]}
+              style={[
+                s.catTab,
+                { backgroundColor: colors.surface },
+                active && { backgroundColor: cat.color, borderColor: cat.color },
+                isTablet && s.catTabTablet,
+              ]}
             >
-              <Text style={s.catEmoji}>{cat.emoji}</Text>
-              <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+              <Text style={[s.catEmoji, isTablet && { fontSize: 24 }]}>{cat.emoji}</Text>
+              <Text style={[s.catLabel, { color: colors.text2 }, active && s.catLabelActive, isTablet && { fontSize: FontSize.base }]}>{cat.label}</Text>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
 
-      {/* ── Icon grid — manual rows for perfect alignment ── */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.grid} style={{ flex: 1 }}>
+      {/* ── Icon grid — swipe left/right to change category ── */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]} style={{ flex: 1 }} {...swipePan.panHandlers}>
         <Animated.View key={category} entering={FadeIn.duration(180)}>
           {rows.map((row, ri) => (
             <View key={ri} style={s.row}>
@@ -358,7 +386,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       </ScrollView>
 
       {/* ── Action buttons ── */}
-      <View style={s.actions}>
+      <View style={[s.actions, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <Pressable
           onPress={handleSpeak}
           onPressIn={() => {}}
@@ -402,7 +430,7 @@ const s = StyleSheet.create({
   // Header
   header: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingHorizontal: PAD, paddingVertical: 12,
+    paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.gray2,
   },
   headerTitle: { fontSize: FontSize.lg, fontWeight: "800", color: C.text },
@@ -414,7 +442,7 @@ const s = StyleSheet.create({
 
   // Request toast
   requestToast: {
-    marginHorizontal: PAD, marginTop: 10, padding: 12, borderRadius: Radius.md,
+    marginHorizontal: 16, marginTop: 10, padding: 12, borderRadius: Radius.md,
     backgroundColor: "#FDECEC", borderWidth: 1.5, borderColor: "#FCA5A5",
     alignItems: "center",
   },
@@ -422,7 +450,7 @@ const s = StyleSheet.create({
 
   // Builder
   builder: {
-    marginHorizontal: PAD, marginVertical: 10,
+    marginHorizontal: 16, marginVertical: 10,
     minHeight: 88, backgroundColor: C.white,
     borderRadius: Radius.lg, borderWidth: 2, borderColor: C.gray2,
     padding: 12, justifyContent: "center", ...Shadow.sm,
@@ -446,7 +474,7 @@ const s = StyleSheet.create({
 
   // LSTM Predictions
   predictWrap: {
-    marginHorizontal: PAD, marginTop: 4, marginBottom: 6,
+    marginHorizontal: 16, marginTop: 4, marginBottom: 6,
     backgroundColor: "#FAF5FF", borderRadius: Radius.lg,
     borderWidth: 1.5, borderColor: "#E9D5FF",
     padding: 10, ...Shadow.sm,
@@ -472,20 +500,21 @@ const s = StyleSheet.create({
   predictLabel: { fontSize: FontSize.sm, fontWeight: "700", color: C.text },
 
   // Category
-  catWrap: { maxHeight: 58, flexGrow: 0 },
-  catRow: { paddingHorizontal: PAD, gap: 8, alignItems: "center", paddingVertical: 8 },
+  catWrap: { maxHeight: 78, flexGrow: 0 },
+  catRow: { paddingHorizontal: 16, gap: 10, alignItems: "center", paddingVertical: 10 },
   catTab: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 18, paddingVertical: 12,
     borderRadius: Radius.full, borderWidth: 1.5, borderColor: "rgba(0,0,0,0.08)",
-    backgroundColor: C.white, minHeight: 40,
+    backgroundColor: C.white, minHeight: 52,
   },
-  catEmoji: { fontSize: 16 },
-  catLabel: { fontSize: FontSize.sm, color: C.text2, fontWeight: "600" },
-  catLabelActive: { color: C.white, fontWeight: "700" },
+  catEmoji: { fontSize: 22 },
+  catLabel: { fontSize: FontSize.base, color: C.text2, fontWeight: "600" },
+  catLabelActive:  { color: C.white, fontWeight: "700" },
+  catTabTablet:    { paddingHorizontal: 22, paddingVertical: 14, minHeight: 58 },
 
   // Grid — cell dimensions are computed inline using CELL/EMOJI_SZ from useWindowDimensions
-  grid: { padding: PAD, paddingBottom: 20 },
+  grid: { padding: 16, paddingBottom: 20 },
   row: { flexDirection: "row", gap: 14, marginBottom: 14 },
   cellBase: {
     borderRadius: Radius.xl, alignItems: "center", justifyContent: "center",
@@ -499,7 +528,7 @@ const s = StyleSheet.create({
 
   // Actions
   actions: {
-    flexDirection: "row", gap: 12, padding: PAD,
+    flexDirection: "row", gap: 12, padding: 16,
     borderTopWidth: 1, borderTopColor: C.gray2, backgroundColor: C.white,
   },
   actionBtn: {
