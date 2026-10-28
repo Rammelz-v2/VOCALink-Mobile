@@ -1,9 +1,10 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { ScreenHeader } from '../ui/ScreenHeader';
 import { Colors as C, FontSize, Radius, Shadow, Spacing } from '../../constants/tokens';
 
@@ -16,20 +17,22 @@ const InfoRow: React.FC<{
   label: string;
   value?: string | null;
   last?: boolean;
-}> = ({ icon, label, value, last }) => (
-  <View style={[s.infoRow, !last && s.infoRowBorder]}>
-    <View style={s.infoIconBox}>
+  colors: ReturnType<typeof useTheme>["colors"];
+}> = ({ icon, label, value, last, colors }) => (
+  <View style={[s.infoRow, !last && { ...s.infoRowBorder, borderBottomColor: colors.borderSubtle }]}>
+    <View style={[s.infoIconBox, { backgroundColor: colors.bg }]}>
       <Text style={{ fontSize: 16 }}>{icon}</Text>
     </View>
     <View style={{ flex: 1 }}>
-      <Text style={s.infoLabel}>{label}</Text>
-      <Text style={s.infoValue} numberOfLines={2}>{value || "Not set"}</Text>
+      <Text style={[s.infoLabel, { color: colors.text3 }]}>{label}</Text>
+      <Text style={[s.infoValue, { color: colors.text }]} numberOfLines={2}>{value || "Not set"}</Text>
     </View>
   </View>
 );
 
 export default function ProfileUI() {
-  const { user, logout } = useAuth();
+  const { user, logout }       = useAuth();
+  const { isDark, toggleTheme, colors } = useTheme();
   const isTeacher = user?.status === "TEACHER";
 
   const displayName = user?.first_name
@@ -60,7 +63,7 @@ export default function ProfileUI() {
   const rows = isTeacher ? teacherRows : studentRows;
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
       <ScreenHeader
         title="Profile"
         subtitle={isTeacher ? "Teacher Account" : "Student Account"}
@@ -75,8 +78,8 @@ export default function ProfileUI() {
               <Text style={s.avatarText}>{initials}</Text>
             </View>
           </View>
-          <Text style={s.heroName}>{displayName}</Text>
-          <Text style={s.heroEmail}>{user?.email}</Text>
+          <Text style={[s.heroName, { color: colors.text }]}>{displayName}</Text>
+          <Text style={[s.heroEmail, { color: colors.text3 }]}>{user?.email}</Text>
           <View style={s.rolePill}>
             <Text style={s.rolePillText}>
               {isTeacher ? "🍎  Teacher" : "🎓  Student"}
@@ -86,27 +89,27 @@ export default function ProfileUI() {
 
         {/* ── Bio (if set) ─────────────────────────────────────────── */}
         {user?.bio ? (
-          <View style={s.bioCard}>
+          <View style={[s.bioCard, { backgroundColor: colors.surface }]}>
             <Text style={s.bioLabel}>Bio</Text>
-            <Text style={s.bioText}>{user.bio}</Text>
+            <Text style={[s.bioText, { color: colors.text2 }]}>{user.bio}</Text>
           </View>
         ) : null}
 
         {/* ── Account info ─────────────────────────────────────────── */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Account</Text>
-          <View style={s.card}>
-            <InfoRow icon="🏷️" label="Username" value={user?.username} />
-            <InfoRow icon="📧" label="Email"    value={user?.email} last />
+          <Text style={[s.sectionTitle, { color: colors.text }]}>Account</Text>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <InfoRow icon="🏷️" label="Username" value={user?.username} colors={colors} />
+            <InfoRow icon="📧" label="Email"    value={user?.email} last colors={colors} />
           </View>
         </View>
 
         {/* ── Role-specific info ───────────────────────────────────── */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>
+          <Text style={[s.sectionTitle, { color: colors.text }]}>
             {isTeacher ? "Professional Details" : "Student Details"}
           </Text>
-          <View style={s.card}>
+          <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {rows.map((r, i) => (
               <InfoRow
                 key={r.label}
@@ -114,6 +117,7 @@ export default function ProfileUI() {
                 label={r.label}
                 value={r.value}
                 last={i === rows.length - 1}
+                colors={colors}
               />
             ))}
           </View>
@@ -121,6 +125,23 @@ export default function ProfileUI() {
 
         {/* ── Actions ──────────────────────────────────────────────── */}
         <View style={s.section}>
+          {/* Dark mode toggle */}
+          <View style={[s.themeRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={s.themeLeft}>
+              <Text style={{ fontSize: 18 }}>{isDark ? "🌙" : "☀️"}</Text>
+              <View>
+                <Text style={[s.themeLabel, { color: colors.text }]}>Dark Mode</Text>
+                <Text style={[s.themeSub, { color: colors.text3 }]}>{isDark ? "On" : "Off"}</Text>
+              </View>
+            </View>
+            <Switch
+              value={isDark}
+              onValueChange={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleTheme(); }}
+              trackColor={{ false: "#E2E8F0", true: "rgba(26,173,220,0.4)" }}
+              thumbColor={isDark ? "#1AADDC" : "#94A3B8"}
+            />
+          </View>
+
           <TouchableOpacity
             style={s.editBtn}
             activeOpacity={0.85}
@@ -134,7 +155,7 @@ export default function ProfileUI() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={s.logoutBtn}
+            style={[s.logoutBtn, { backgroundColor: colors.surface }]}
             activeOpacity={0.85}
             onPress={() => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -224,6 +245,17 @@ const s = StyleSheet.create({
   },
   infoLabel:  { fontSize: 10, fontWeight: "700", color: C.text3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 },
   infoValue:  { fontSize: FontSize.sm, fontWeight: "700", color: C.text },
+
+  // Theme toggle
+  themeRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingVertical: 14, paddingHorizontal: 16,
+    borderRadius: Radius.lg, borderWidth: 1.5,
+    marginBottom: Spacing.md,
+  },
+  themeLeft:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  themeLabel: { fontSize: FontSize.md, fontWeight: "700" },
+  themeSub:   { fontSize: FontSize.xs, fontWeight: "500", marginTop: 2 },
 
   // Edit / logout buttons
   editBtn: {
