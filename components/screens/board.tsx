@@ -32,6 +32,33 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return rows;
 }
 
+// ── LSTM prediction parsing ───────────────────────────────────────────────────
+const PREDICT_TOP_K = 5;
+
+interface Prediction {
+  icon: AACIcon;
+  score?: number; // 0–1 probability from the model, when provided
+}
+
+// Accepts either `predictions: ["want", ...]` or
+// `predictions: [{ icon_id: "want", score: 0.42 }, ...]` (also `probability` /
+// `confidence`), so the board keeps working if the backend response evolves.
+function parsePredictions(data: any): Prediction[] {
+  const raw: any[] = Array.isArray(data) ? data : data?.predictions ?? [];
+  // The FastAPI backend returns a parallel `confidence` array; `scores` is also accepted
+  const scoreList = data?.confidence ?? data?.scores;
+  const scores: number[] | undefined = Array.isArray(scoreList) ? scoreList : undefined;
+  const out: Prediction[] = [];
+  raw.forEach((p, idx) => {
+    const id = typeof p === "string" ? p : p?.icon_id ?? p?.id;
+    const icon = AAC_ICONS.find(i => i.id === id);
+    if (!icon || out.some(o => o.icon.id === icon.id)) return;
+    const s = typeof p === "object" ? p?.score ?? p?.probability ?? p?.confidence : scores?.[idx];
+    out.push({ icon, score: typeof s === "number" && isFinite(s) ? s : undefined });
+  });
+  return out;
+}
+
 const REQUEST_TYPE_BY_ICON_ID: Record<string, string> = {
   medicine: "medication",
   toilet: "bathroom",
@@ -143,35 +170,36 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const [sent, setSent]         = useState(false);
   const [requestSent, setRequestSent] = useState<string | null>(null);
 
-  // ── LSTM-style next-icon prediction ───────────────────────────────────────
-  const [predictions, setPredictions]       = useState<AACIcon[]>([]);
+  // ── LSTM next-icon prediction (FastAPI /predict-next/) ────────────────────
+  const [predictions, setPredictions]       = useState<Prediction[]>([]);
   const [predictLoading, setPredictLoading] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const fetchPredictions = async () => {
+    if (!token || !sessionCode) return;
+    const controller = new AbortController();
+    // Debounce so rapid taps only trigger one request for the final sequence
+    const timer = setTimeout(async () => {
       setPredictLoading(true);
       try {
         const res = await axios.post(
           `${API_BASE_URL}/predict-next/`,
-          { sequence: selected.map(s => s.id), top_k: 3 },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { sequence: selected.map(s => s.id), top_k: PREDICT_TOP_K },
+          { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal, timeout: 8000 }
         );
-        if (cancelled) return;
-        const ids: string[] = res.data?.predictions || [];
-        const mapped = ids
-          .map(id => AAC_ICONS.find(i => i.id === id))
-          .filter((x): x is AACIcon => !!x);
-        setPredictions(mapped);
-      } catch {
-        if (!cancelled) setPredictions([]);
+        // Don't suggest the icon that was just tapped
+        const lastId = selected[selected.length - 1]?.id;
+        setPredictions(
+          parsePredictions(res.data).filter(p => p.icon.id !== lastId).slice(0, PREDICT_TOP_K)
+        );
+      } catch (err) {
+        // Keep the last suggestions on a cancelled request; clear them on real errors
+        if (!axios.isCancel(err)) setPredictions([]);
       } finally {
-        if (!cancelled) setPredictLoading(false);
+        if (!controller.signal.aborted) setPredictLoading(false);
       }
-    };
-    fetchPredictions();
-    return () => { cancelled = true; };
-  }, [selected, token]);
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [selected, token, sessionCode]);
 
   const filtered = category === "all"
     ? AAC_ICONS
@@ -231,8 +259,15 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     // so this is the only network call needed — a second call to
     // /api/sessions/log/ used to run here too and created a duplicate row
     // for the same message every time a session was active.
+    // icon_sequence (icon ids in tap order) is the LSTM's training data.
     axios.post(`${API_BASE_URL}/logs/`,
-      { icon_id: "message", icon_label: messageText, message: messageText, session_code: sessionCode ?? undefined },
+      {
+        icon_id: "message",
+        icon_label: messageText,
+        message: messageText,
+        icon_sequence: selected.map(i => i.id),
+        session_code: sessionCode ?? undefined,
+      },
       { headers }
     ).catch(() => {});
 
@@ -323,15 +358,18 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={s.predictRow}
           >
-            {predictions.map(icon => (
+            {predictions.map(({ icon, score }) => (
               <TouchableOpacity
                 key={`pred-${icon.id}`}
                 onPress={() => handleIconPress(icon)}
                 activeOpacity={0.75}
-                style={[s.predictChip, { backgroundColor: icon.bg }]}
+                style={[s.predictChip, { backgroundColor: icon.bg, opacity: predictLoading ? 0.6 : 1 }]}
               >
                 <Text style={s.predictEmoji}>{icon.emoji}</Text>
                 <Text style={s.predictLabel} numberOfLines={1}>{icon.label}</Text>
+                {score !== undefined && (
+                  <Text style={s.predictScore}>{Math.round(score * 100)}%</Text>
+                )}
               </TouchableOpacity>
             ))}
             {predictLoading && (
@@ -507,6 +545,7 @@ const s = StyleSheet.create({
   },
   predictEmoji: { fontSize: 22 },
   predictLabel: { fontSize: FontSize.sm, fontWeight: "700", color: C.text },
+  predictScore: { fontSize: 11, fontWeight: "800", color: "#7C3AED" },
 
   // Category
   catWrap: { maxHeight: 78, flexGrow: 0 },
