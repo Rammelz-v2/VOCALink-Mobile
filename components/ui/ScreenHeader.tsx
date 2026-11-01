@@ -40,6 +40,6 @@ const styles = StyleSheet.create({
   },
   left:     { flex: 1 },
   title:    { fontSize: FontSize.lg, fontWeight: "800", color: C.white, letterSpacing: -0.3 },
-  subtitle: { fontSize: FontSize.xs, color: "rgba(255,255,255,0.60)", marginTop: 3, fontWeight: "500", letterSpacing: 0.3 },
+  subtitle: { fontSize: FontSize.xs, color: "rgba(255,255,255,0.85)", marginTop: 3, fontWeight: "500", letterSpacing: 0.3 },
   right:    { marginLeft: 12 },
 });

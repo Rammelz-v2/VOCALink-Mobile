@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StyleSheet, View, TouchableOpacity, Text } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useAuth } from "../../contexts/AuthContext";
@@ -32,6 +32,12 @@ export default function TabsLayout() {
   const [joining,      setJoining]      = useState(false);
   const [joinError,    setJoinError]    = useState<string | null>(null);
 
+  // Keep a ref to the last non-null token so we can fire leave on sign-out
+  const prevTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (token) prevTokenRef.current = token;
+  }, [token]);
+
   // ── Presence heartbeat every 30s (student only) ──────────────────────────
   useEffect(() => {
     if (!token || isTeacher) return;
@@ -42,6 +48,27 @@ export default function TabsLayout() {
     const interval = setInterval(ping, 30000);
     return () => clearInterval(interval);
   }, [token, isTeacher]);
+
+  // ── Auto-restore session on login / app start (student only) ─────────────
+  useEffect(() => {
+    if (!token || isTeacher) return;
+    axios.get(`${API_BASE_URL}/sessions/student/current`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(res => {
+      if (res.data?.session_code) setSessionCode(res.data.session_code);
+    }).catch(() => {});
+  }, [token, isTeacher]);
+
+  // ── Auto-leave session when user signs out ────────────────────────────────
+  useEffect(() => {
+    if (!user && sessionCode && prevTokenRef.current) {
+      axios.post(`${API_BASE_URL}/sessions/leave/`, {}, {
+        headers: { Authorization: `Bearer ${prevTokenRef.current}` },
+      }).catch(() => {});
+      setSessionCode(null);
+      prevTokenRef.current = null;
+    }
+  }, [user]);
 
   // ── Teacher session poll (for "Return to Room" pill) ─────────────────────
   useEffect(() => {

@@ -110,8 +110,16 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const CELL     = Math.floor((SW - PAD * 2 - GAP * (COLS - 1)) / COLS);
   const EMOJI_SZ = Math.floor(CELL * (isTablet ? 0.38 : 0.44));
   const [category, setCategory] = useState<AACCategory>("all");
-  const categoryRef = useRef<AACCategory>("all");
+  const categoryRef   = useRef<AACCategory>("all");
+  const catScrollRef  = useRef<ScrollView>(null);
   useEffect(() => { categoryRef.current = category; }, [category]);
+
+  // Auto-scroll category tabs to keep the active tab visible when swiping
+  useEffect(() => {
+    const idx = CATEGORIES.findIndex(c => c.id === category);
+    if (idx < 0 || !catScrollRef.current) return;
+    catScrollRef.current.scrollTo({ x: Math.max(0, idx * 88 - 60), animated: true });
+  }, [category]);
 
   const swipePan = useRef(
     PanResponder.create({
@@ -338,6 +346,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
 
       {/* ── Category tabs ── */}
       <ScrollView
+        ref={catScrollRef}
         horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={[s.catRow, { paddingHorizontal: PAD }]}
         style={s.catWrap}

@@ -4,6 +4,10 @@
     "slug": "VOCALink-Mobile",
     "version": "1.0.0",
     "orientation": "portrait",
+    "splash": {
+      "backgroundColor": "#2D226A",
+      "resizeMode": "contain"
+    },
     "scheme": "vocalinkmobile",
     "userInterfaceStyle": "automatic",
     "ios": {

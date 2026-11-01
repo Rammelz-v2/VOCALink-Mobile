@@ -103,7 +103,8 @@ const Home: React.FC<HomeProps> = ({
   const { user, token } = useAuth();
   const { colors }      = useTheme();
   const { isTablet, isLandscape, hPad } = useLayout();
-  const [codeInput, setCodeInput] = useState("");
+  const [codeInput, setCodeInput]         = useState("");
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [recentActivity, setRecentActivity] = useState<
     { id: string | number; emoji: string; text: string; time: string }[]
   >([]);
@@ -185,32 +186,57 @@ const Home: React.FC<HomeProps> = ({
     </Animated.View>
   ) : (
     <Animated.View entering={FadeIn.duration(350)} style={{ marginHorizontal: hPad }}>
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setActive("livecc");
-        }}
-        style={styles.activeClassBanner}
-      >
-        <View style={styles.activeClassTop}>
-          <Text style={styles.activeClassIcon}>🟢</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.activeClassTitle}>Session Active!</Text>
-            <Text style={styles.activeClassSub}>Code: {sessionCode}</Text>
+      {showLeaveConfirm ? (
+        <View style={styles.activeClassBanner}>
+          <Text style={[styles.activeClassTitle, { marginBottom: 4 }]}>Leave this session?</Text>
+          <Text style={[styles.activeClassSub, { marginBottom: 16 }]}>
+            You'll stop receiving live captions.
+          </Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <TouchableOpacity
+              style={[styles.activeClassBtn, { flex: 1, backgroundColor: "rgba(255,255,255,0.2)" }]}
+              activeOpacity={0.8}
+              onPress={() => setShowLeaveConfirm(false)}
+            >
+              <Text style={[styles.activeClassBtnText, { color: "#fff" }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.activeClassBtn, { flex: 1 }]}
+              activeOpacity={0.8}
+              onPress={() => { setShowLeaveConfirm(false); leaveSession?.(); }}
+            >
+              <Text style={[styles.activeClassBtnText, { color: "#DC2626" }]}>Leave</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={(e) => { e.stopPropagation?.(); leaveSession?.(); }}
-            style={styles.leaveBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.leaveBtnText}>Leave</Text>
-          </TouchableOpacity>
         </View>
-        <View style={styles.activeClassBtn}>
-          <Text style={styles.activeClassBtnText}>Go to Live CC Room →</Text>
-        </View>
-      </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setActive("livecc");
+          }}
+          style={styles.activeClassBanner}
+        >
+          <View style={styles.activeClassTop}>
+            <Text style={styles.activeClassIcon}>🟢</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.activeClassTitle}>Session Active!</Text>
+              <Text style={styles.activeClassSub}>Code: {sessionCode}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowLeaveConfirm(true)}
+              style={styles.leaveBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.leaveBtnText}>Leave</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.activeClassBtn}>
+            <Text style={styles.activeClassBtnText}>Go to Live CC Room →</Text>
+          </View>
+        </TouchableOpacity>
+      )}
     </Animated.View>
   );
 
@@ -219,7 +245,7 @@ const Home: React.FC<HomeProps> = ({
       {[
         { emoji: "📅", value: shortGrade(user?.grade_level), label: "Grade" },
         { emoji: "🔔", value: sessionCode ? "Live" : "None", label: "Session" },
-        { emoji: "🟢", value: "Online", label: "Status" },
+        { emoji: "🗣", value: user?.disability_type ? "Set" : "—", label: "Comm. Type" },
       ].map((stat, i) => (
         <Animated.View key={stat.label} entering={FadeInDown.delay(i * 70).springify()} style={{ flex: 1 }}>
           <StatCard emoji={stat.emoji} value={stat.value} label={stat.label} large={isTablet} />
@@ -233,8 +259,8 @@ const Home: React.FC<HomeProps> = ({
       <Text style={[styles.sectionTitle, { color: colors.text }]}>Dashboard</Text>
       <View style={styles.tileGrid}>
         {[
-          { emoji: "🗣", label: "AAC Board", sub: "Tap icons to communicate", color: C.purple, bg: C.purpleLight, tab: "board" as const },
-          { emoji: "📝", label: "Live Captions", sub: "See what teacher is saying", color: "#0E8DB8", bg: "#E0F5FC", tab: "livecc" as const },
+          { emoji: "🗣", label: "AAC Board", sub: "Tap icons to communicate", color: C.purple, bg: colors.purpleLight, tab: "board" as const },
+          { emoji: "📝", label: "Live Captions", sub: "See what teacher is saying", color: "#0E8DB8", bg: colors.tealLight, tab: "livecc" as const },
         ].map((tile, i) => (
           <Animated.View
             key={tile.tab}
@@ -279,8 +305,8 @@ const Home: React.FC<HomeProps> = ({
       <View style={[styles.tipCard, { backgroundColor: colors.purpleLight }]}>
         <Text style={styles.tipEmoji}>💡</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.tipTitle}>Tip of the Day</Text>
-          <Text style={styles.tipText}>
+          <Text style={[styles.tipTitle, { color: colors.text2 }]}>Tip of the Day</Text>
+          <Text style={[styles.tipText, { color: colors.text }]}>
             {TIPS[new Date().getDate() % TIPS.length]}
           </Text>
         </View>
@@ -353,7 +379,7 @@ const Home: React.FC<HomeProps> = ({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  scroll: { paddingBottom: 40 },
+  scroll: { paddingBottom: 100 },
 
   // Tablet landscape two-column split
   splitRow: { flex: 1, flexDirection: "row" },
@@ -407,8 +433,8 @@ const styles = StyleSheet.create({
   joinBtnText: { fontSize: FontSize.base, fontWeight: "800", color: C.white },
 
   // ── Active session banner ──────────────────────────────────────────────────
-  leaveBtn:     { backgroundColor: "rgba(255,255,255,0.25)", borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6 },
-  leaveBtnText: { fontSize: FontSize.xs, fontWeight: "700", color: C.white },
+  leaveBtn:     { backgroundColor: "rgba(255,255,255,0.92)", borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 7 },
+  leaveBtnText: { fontSize: FontSize.xs, fontWeight: "800", color: "#DC2626" },
   activeClassBanner: { marginVertical: Spacing.lg, padding: Spacing.lg, backgroundColor: "#10B981", borderRadius: Radius.lg, ...Shadow.md },
   activeClassTop: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
   activeClassIcon: { fontSize: 28 },

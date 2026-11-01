@@ -33,6 +33,7 @@ const InfoRow: React.FC<{
 export default function ProfileUI() {
   const { user, logout }       = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
+  const [showSignOutConfirm, setShowSignOutConfirm] = React.useState(false);
   const isTeacher = user?.status === "TEACHER";
 
   const displayName = user?.first_name
@@ -154,16 +155,39 @@ export default function ProfileUI() {
             <Text style={s.editBtnText}>Edit Profile</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[s.logoutBtn, { backgroundColor: colors.surface }]}
-            activeOpacity={0.85}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              logout();
-            }}
-          >
-            <Text style={s.logoutBtnText}>Sign Out</Text>
-          </TouchableOpacity>
+          {showSignOutConfirm ? (
+            <View style={[s.confirmCard, { backgroundColor: colors.surface }]}>
+              <Text style={[s.confirmTitle, { color: colors.text }]}>Sign out of VocaLink?</Text>
+              <Text style={[s.confirmSub, { color: colors.text3 }]}>You'll need to log back in to access your account.</Text>
+              <View style={s.confirmBtns}>
+                <TouchableOpacity
+                  style={[s.confirmCancelBtn, { borderColor: colors.border }]}
+                  activeOpacity={0.8}
+                  onPress={() => setShowSignOutConfirm(false)}
+                >
+                  <Text style={[s.confirmCancelText, { color: colors.text2 }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.confirmSignOutBtn}
+                  activeOpacity={0.8}
+                  onPress={() => { setShowSignOutConfirm(false); logout(); }}
+                >
+                  <Text style={s.confirmSignOutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[s.logoutBtn, { backgroundColor: colors.surface }]}
+              activeOpacity={0.85}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                setShowSignOutConfirm(true);
+              }}
+            >
+              <Text style={s.logoutBtnText}>Sign Out</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
       </ScrollView>
@@ -277,4 +301,36 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: "#FCA5A5",
   },
   logoutBtnText: { color: C.redDark, fontWeight: "700", fontSize: FontSize.md },
+
+  // Inline sign-out confirmation
+  confirmCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1.5, borderColor: "#FCA5A5",
+    padding: Spacing.lg,
+  },
+  confirmTitle: {
+    fontSize: FontSize.md, fontWeight: "800",
+    textAlign: "center", marginBottom: 6,
+  },
+  confirmSub: {
+    fontSize: FontSize.xs, fontWeight: "500",
+    textAlign: "center", marginBottom: 18, lineHeight: 18,
+  },
+  confirmBtns: {
+    flexDirection: "row", gap: 10,
+  },
+  confirmCancelBtn: {
+    flex: 1, paddingVertical: 13,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    alignItems: "center",
+  },
+  confirmCancelText: { fontWeight: "700", fontSize: FontSize.sm },
+  confirmSignOutBtn: {
+    flex: 1, paddingVertical: 13,
+    borderRadius: Radius.md,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+  },
+  confirmSignOutText: { color: "#fff", fontWeight: "700", fontSize: FontSize.sm },
 });
