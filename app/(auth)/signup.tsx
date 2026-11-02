@@ -15,6 +15,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCrossAlert } from "../../components/CrossAlert";
 // Reusing the beautiful styles your groupmate built for the login screen
@@ -54,16 +55,11 @@ export default function SignupScreen() {
 
     setLoading(true);
     try {
-      console.log(`🚀 Trying to register: ${username} / ${email}`);
       await signup(username, email, password, fullName);
-
-      // Verification step removed — go straight to login instead.
       showAlert({
-        title: "Success",
-        message: "Your account was created successfully! You can now sign in.",
-        buttons: [
-          { text: "Sign In", onPress: () => router.replace("/(auth)/login" as any) },
-        ],
+        title: "Account Created!",
+        message: "You can now sign in.",
+        buttons: [{ text: "Sign In", onPress: () => router.replace("/(auth)/login" as any) }],
       });
 
     } catch (error) {
@@ -112,7 +108,7 @@ export default function SignupScreen() {
               style={fallbackStyles.input}
               value={fullName}
               onChangeText={setFullName}
-              placeholder="e.g. Juan Dela Cruz"
+              placeholder="Enter your full name"
               autoCapitalize="words"
             />
 
@@ -121,7 +117,7 @@ export default function SignupScreen() {
               style={fallbackStyles.input}
               value={username}
               onChangeText={setUsername}
-              placeholder="e.g. test999"
+              placeholder="Enter your username"
               autoCapitalize="none"
             />
 
@@ -130,7 +126,7 @@ export default function SignupScreen() {
               style={fallbackStyles.input}
               value={email}
               onChangeText={setEmail}
-              placeholder="test999@email.com"
+              placeholder="Enter your email address"
               autoCapitalize="none"
               keyboardType="email-address"
             />
@@ -141,11 +137,11 @@ export default function SignupScreen() {
                 style={fallbackStyles.inputInner}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="••••••••••"
+                placeholder="Enter your password"
                 secureTextEntry={!showPass}
               />
               <TouchableOpacity onPress={() => setShowPass(!showPass)} style={fallbackStyles.eyeBtn} activeOpacity={0.7}>
-                <Text style={fallbackStyles.eyeText}>{showPass ? "🙈" : "👁"}</Text>
+                <Ionicons name={showPass ? "eye-off-outline" : "eye-outline"} size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
 
@@ -185,7 +181,6 @@ const fallbackStyles = StyleSheet.create({
   inputWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#EEF2F8', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 9, marginBottom: 4 },
   inputInner: { flex: 1, padding: 12, paddingHorizontal: 14, fontSize: 14, color: '#0F172A' },
   eyeBtn: { paddingHorizontal: 12, paddingVertical: 10 },
-  eyeText: { fontSize: 18, color: '#64748B' },
   button: { padding: 13, borderRadius: 9, alignItems: 'center' as const, shadowColor: 'rgba(45,212,230,0.4)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 1, shadowRadius: 20, elevation: 6 },
   buttonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 });

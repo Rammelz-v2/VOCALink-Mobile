@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../contexts/AuthContext";
 import { loginStyles as styles } from "../../styles/loginStyles";
 import { useCrossAlert } from "../../components/CrossAlert";
@@ -42,7 +43,6 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const showAlert = useCrossAlert();
 
-  // Replaced the missing useAuthForm hook with standard React state!
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -59,7 +59,6 @@ export default function LoginScreen() {
     try {
       await login(username, password);
     } catch (error: any) {
-      // Email-verification handling removed — just show a generic error now.
       showAlert({ title: "Login Failed", message: "Invalid credentials. Please try again." });
     } finally {
       setLoading(false);
@@ -112,7 +111,6 @@ export default function LoginScreen() {
               Sign in to access your dashboard
             </Text>
 
-            {/* Replaced missing InputField with standard TextInput */}
             <Text style={fallbackStyles.label}>Username or Email</Text>
             <TextInput
               style={fallbackStyles.input}
@@ -129,7 +127,7 @@ export default function LoginScreen() {
                 style={fallbackStyles.inputInner}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="••••••••••"
+                placeholder="Enter your password"
                 secureTextEntry={!showPass}
               />
               <TouchableOpacity
@@ -137,7 +135,7 @@ export default function LoginScreen() {
                 style={fallbackStyles.eyeBtn}
                 activeOpacity={0.7}
               >
-                <Text style={fallbackStyles.eyeText}>{showPass ? "🙈" : "👁"}</Text>
+                <Ionicons name={showPass ? "eye-off-outline" : "eye-outline"} size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
 
@@ -161,7 +159,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Replaced missing Button with standard TouchableOpacity */}
             <TouchableOpacity
               onPress={handleLogin}
               disabled={loading}
@@ -237,7 +234,6 @@ const fallbackStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  eyeText: { fontSize: 18, color: "#64748B" },
   button: {
     padding: 13,
     borderRadius: 9,

@@ -25,7 +25,6 @@ import ActionBar from "../board/ActionBar";
 
 const GAP = 12;
 
-console.log("icons:", AAC_ICONS.length, AAC_ICONS.filter(i => i.category === "math").length);
 
 function chunk<T>(arr: T[], n: number): T[][] {
   const rows: T[][] = [];

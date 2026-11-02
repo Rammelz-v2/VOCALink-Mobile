@@ -81,11 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const login = async (identifier: string, password: string) => {
-    const response = await axios.post(`${API_BASE_URL}/auth/login/`, {
-      identifier,
-      password,
-    });
-
+    const response = await axios.post(`${API_BASE_URL}/auth/login/`, { identifier, password });
     const accessToken: string = response.data.access_token;
 
     const profileRes = await axios.get(`${API_BASE_URL}/profile/me`, {
