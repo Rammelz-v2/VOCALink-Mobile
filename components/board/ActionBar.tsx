@@ -27,8 +27,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ hasSelection, speaking, sent, onS
 
       <Pressable
         onPress={onSend}
-        disabled={!hasSelection}
-        style={[s.btn, s.sendBtn, !hasSelection && s.disabled]}
+        disabled={!hasSelection || sent}
+        style={[s.btn, s.sendBtn, (!hasSelection || sent) && s.disabled]}
       >
         <Text style={s.emoji}>{sent ? "✅" : "📤"}</Text>
         <Text style={s.text}>{sent ? "Sent!" : "Send"}</Text>

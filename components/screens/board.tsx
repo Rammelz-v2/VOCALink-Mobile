@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  PanResponder, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  StyleSheet, Text, TouchableOpacity, View,
 } from "react-native";
+import { GestureDetector, Gesture, ScrollView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, SlideInLeft, SlideInRight } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import axios from "axios";
@@ -90,24 +90,27 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     catScrollRef.current.scrollTo({ x: Math.max(0, idx * 88 - 60), animated: true });
   }, [category]);
 
-  const swipePan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 15 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
-      onPanResponderRelease: (_, g) => {
-        if (Math.abs(g.dx) < 60) return;
+  const [swipeDir, setSwipeDir] = useState<'left' | 'right'>('left');
+
+  const swipeGesture = useMemo(() =>
+    Gesture.Pan()
+      .activeOffsetX([-25, 25])
+      .failOffsetY([-15, 15])
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (Math.abs(e.translationX) < 60) return;
         const idx = CATEGORIES.findIndex(c => c.id === categoryRef.current);
-        if (g.dx < 0 && idx < CATEGORIES.length - 1) {
+        if (e.translationX < 0 && idx < CATEGORIES.length - 1) {
+          setSwipeDir('left');
           setCategory(CATEGORIES[idx + 1].id);
           Haptics.selectionAsync();
-        } else if (g.dx > 0 && idx > 0) {
+        } else if (e.translationX > 0 && idx > 0) {
+          setSwipeDir('right');
           setCategory(CATEGORIES[idx - 1].id);
           Haptics.selectionAsync();
         }
-      },
-    })
-  ).current;
-
+      }),
+  []);
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [sent, setSent]         = useState(false);
@@ -182,7 +185,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   };
 
   const handleSend = () => {
-    if (!selected.length) return;
+    if (!selected.length || sent) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSendToTeacher?.(messageText);
 
@@ -262,31 +265,35 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
         catScrollRef={catScrollRef}
       />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]}
-        style={{ flex: 1 }}
-        {...swipePan.panHandlers}
-      >
-        <Animated.View key={category} entering={FadeIn.duration(180)}>
-          {rows.map((row, ri) => (
-            <View key={ri} style={s.row}>
-              {row.map(icon => (
-                <AACCell
-                  key={icon.id}
-                  icon={icon}
-                  onPress={handleIconPress}
-                  size={CELL}
-                  emojiSize={EMOJI_SZ}
-                />
-              ))}
-              {row.length < COLS && Array.from({ length: COLS - row.length }).map((_, i) => (
-                <View key={`empty-${i}`} style={{ width: CELL }} />
-              ))}
-            </View>
-          ))}
-        </Animated.View>
-      </ScrollView>
+      <GestureDetector gesture={swipeGesture}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]}
+          style={{ flex: 1, overflow: 'hidden' }}
+        >
+          <Animated.View
+            key={category}
+            entering={swipeDir === 'left' ? SlideInRight.duration(220) : SlideInLeft.duration(220)}
+          >
+            {rows.map((row, ri) => (
+              <View key={ri} style={s.row}>
+                {row.map(icon => (
+                  <AACCell
+                    key={icon.id}
+                    icon={icon}
+                    onPress={handleIconPress}
+                    size={CELL}
+                    emojiSize={EMOJI_SZ}
+                  />
+                ))}
+                {row.length < COLS && Array.from({ length: COLS - row.length }).map((_, i) => (
+                  <View key={`empty-${i}`} style={{ width: CELL }} />
+                ))}
+              </View>
+            ))}
+          </Animated.View>
+        </ScrollView>
+      </GestureDetector>
 
       <ActionBar
         hasSelection={selected.length > 0}

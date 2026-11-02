@@ -135,7 +135,7 @@ const Home: React.FC<HomeProps> = ({
   );
 
   const activitySection = (
-    <Animated.View entering={isLandscape ? FadeIn.delay(300) : FadeInDown.delay(300).springify()} style={[styles.section, { paddingHorizontal: hPad }]}>
+    <Animated.View entering={FadeIn.delay(300)} style={[styles.section, { paddingHorizontal: hPad }]}>
       <Text style={[styles.sectionTitle, { color: colors.text }]}>Messages Sent</Text>
       <View style={[styles.activityCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {recentActivity.length > 0 ? (
@@ -153,7 +153,7 @@ const Home: React.FC<HomeProps> = ({
   );
 
   const tipSection = (
-    <Animated.View entering={isLandscape ? FadeIn.delay(380) : FadeInDown.delay(380).springify()} style={[styles.section, { paddingHorizontal: hPad }]}>
+    <Animated.View entering={FadeIn.delay(380)} style={[styles.section, { paddingHorizontal: hPad }]}>
       <View style={[styles.tipCard, { backgroundColor: colors.tealLight }]}>
         <Text style={styles.tipEmoji}>💡</Text>
         <View style={{ flex: 1 }}>
