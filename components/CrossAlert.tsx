@@ -109,13 +109,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#111827",
+    color: "#0F172A",
     marginBottom: 6,
     textAlign: "center",
   },
   message: {
     fontSize: 14,
-    color: "#4B5563",
+    color: "#475569",
     textAlign: "center",
     marginBottom: 18,
     lineHeight: 20,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonCancel: {
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#F1F5F9",
   },
   buttonDestructive: {
     backgroundColor: "#EF4444",
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   buttonTextCancel: {
-    color: "#374151",
+    color: "#475569",
   },
   buttonTextDestructive: {
     color: "#FFFFFF",

@@ -6,7 +6,7 @@ const PHOTO_SIZE = (width - 48) / 2.2;
 export const loginStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#1AADDC",
+    backgroundColor: "#070F1E",
   },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1 },
@@ -26,6 +26,15 @@ export const loginStyles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  tealGlow: {
+    position: "absolute",
+    top: -height * 0.12,
+    left: -width * 0.18,
+    width: width * 0.75,
+    height: height * 0.45,
+    borderRadius: width * 0.5,
+    backgroundColor: "rgba(45,212,230,0.15)",
   },
 
   /* Individual photo positions — all styles here, no inline CSS */
@@ -148,13 +157,13 @@ export const loginStyles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 30,
     fontWeight: "800",
-    color: "#1A1A2E",
+    color: "#0F172A",
     letterSpacing: -0.5,
     marginBottom: 4,
   },
   welcomeSubtitle: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#64748B",
     marginBottom: 28,
   },
   optionsRow: {
@@ -174,7 +183,7 @@ export const loginStyles = StyleSheet.create({
     height: 20,
     borderRadius: 5,
     borderWidth: 2,
-    borderColor: "#D1D5DB",
+    borderColor: "#E2E8F0",
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
@@ -190,7 +199,7 @@ export const loginStyles = StyleSheet.create({
   },
   rememberText: {
     fontSize: 13,
-    color: "#6B7280",
+    color: "#64748B",
   },
   forgotText: {
     fontSize: 13,
@@ -204,7 +213,7 @@ export const loginStyles = StyleSheet.create({
   },
   signupText: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#64748B",
   },
   signupLink: {
     fontSize: 14,

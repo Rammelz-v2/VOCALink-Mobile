@@ -1,36 +1,30 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View, TouchableOpacity, Text } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLiveCC } from "../../contexts/LiveCCContext";
 import axios from "axios";
 
-import AACBoard      from "../../components/screens/board";
-import Home          from "../../components/screens/home";
-import TeacherHome   from "../../components/screens/teacher-home";
-import TeacherLiveCC from "../../components/screens/teacher-livecc";
-import LiveCC        from "../../components/screens/livecc";
-import ProfileUI     from "../../components/screens/profile";
+import AACBoard  from "../../components/screens/board";
+import Home      from "../../components/screens/home";
+import LiveCC    from "../../components/screens/livecc";
+import ProfileUI from "../../components/screens/profile";
 import BottomNav, { TabName } from "../../components/ui/BottomNav";
-import { Colors as C, FontSize, Radius, Shadow } from "../../constants/tokens";
+import { Colors as C } from "../../constants/tokens";
 import { API_BASE_URL } from "../../constants/api";
-import { useLayout } from "../../hooks/useLayout";
-
-export type ExtendedTabName = TabName | "teacher-livecc" | "sessioning";
+import { appendSentMessage } from "../../utils/sentMessages";
 
 export default function TabsLayout() {
   const { user, token } = useAuth();
-  const { navHeight } = useLayout();
-  const isTeacher = user?.status === "TEACHER";
+  const { updateSessionCode } = useLiveCC();
 
-  const [active,              setActive]              = useState<ExtendedTabName>("home");
-  const [unread,              setUnread]              = useState(1);
-  const [sessionActive,       setSessionActive]       = useState(false);
-  const [teacherSessionCode,  setTeacherSessionCode]  = useState<string | null>(null);
+  const [active,     setActive]     = useState<TabName>("home");
+  const [sessionCode, setSessionCode] = useState<string | null>(null);
 
-  // ── Student session state — code-based joining ────────────────────────────
-  const [sessionCode,  setSessionCode]  = useState<string | null>(null);
-  const [joining,      setJoining]      = useState(false);
-  const [joinError,    setJoinError]    = useState<string | null>(null);
+  // Keep LiveCCContext in sync with the current session code
+  useEffect(() => { updateSessionCode(sessionCode); }, [sessionCode]);
+  const [joining,    setJoining]    = useState(false);
+  const [joinError,  setJoinError]  = useState<string | null>(null);
 
   // Keep a ref to the last non-null token so we can fire leave on sign-out
   const prevTokenRef = useRef<string | null>(null);
@@ -38,26 +32,26 @@ export default function TabsLayout() {
     if (token) prevTokenRef.current = token;
   }, [token]);
 
-  // ── Presence heartbeat every 30s (student only) ──────────────────────────
+  // ── Presence heartbeat every 30s ─────────────────────────────────────────
   useEffect(() => {
-    if (!token || isTeacher) return;
+    if (!token) return;
     const ping = () => axios.post(`${API_BASE_URL}/presence/`, {}, {
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {});
     ping();
     const interval = setInterval(ping, 30000);
     return () => clearInterval(interval);
-  }, [token, isTeacher]);
+  }, [token]);
 
-  // ── Auto-restore session on login / app start (student only) ─────────────
+  // ── Auto-restore session on login / app start ─────────────────────────────
   useEffect(() => {
-    if (!token || isTeacher) return;
+    if (!token) return;
     axios.get(`${API_BASE_URL}/sessions/student/current`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(res => {
       if (res.data?.session_code) setSessionCode(res.data.session_code);
     }).catch(() => {});
-  }, [token, isTeacher]);
+  }, [token]);
 
   // ── Auto-leave session when user signs out ────────────────────────────────
   useEffect(() => {
@@ -70,31 +64,13 @@ export default function TabsLayout() {
     }
   }, [user]);
 
-  // ── Teacher session poll (for "Return to Room" pill) ─────────────────────
+  // ── Poll to detect when session ends ─────────────────────────────────────
   useEffect(() => {
-    if (!isTeacher || !token) return;
-    const check = async () => {
-      try {
-        const res = await axios.get(`${API_BASE_URL}/sessions/teacher`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setSessionActive(res.data.active);
-        setTeacherSessionCode(res.data.session_code ?? null);
-      } catch {}
-    };
-    check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
-  }, [isTeacher, token]);
-
-  // ── After a student has joined, poll to detect when session ends ──────────
-  // Only runs when sessionCode is non-null (student has already entered code).
-  useEffect(() => {
-    if (!token || isTeacher || !sessionCode) return;
+    if (!token || !sessionCode) return;
     const check = async () => {
       try {
         const res = await axios.get(
-          `${API_BASE_URL}/sessions/student?session_code=${sessionCode ?? ""}`,
+          `${API_BASE_URL}/sessions/student?session_code=${sessionCode}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         if (!res.data.active) {
@@ -105,12 +81,9 @@ export default function TabsLayout() {
     };
     const interval = setInterval(check, 5000);
     return () => clearInterval(interval);
-  }, [token, isTeacher, sessionCode]);
+  }, [token, sessionCode]);
 
-  // ── Code-based join (student enters teacher's session code) ───────────────
-  // Requires POST /api/sessions/join/ on the FastAPI backend:
-  //   body: { code: "ABCD12" }
-  //   returns: { active: true, session_code: "ABCD12", teacher_name: "..." }
+  // ── Join session ──────────────────────────────────────────────────────────
   const joinSession = useCallback(async (code: string): Promise<{ ok: boolean; error?: string }> => {
     if (!token) return { ok: false, error: "Not authenticated." };
     setJoining(true);
@@ -150,31 +123,8 @@ export default function TabsLayout() {
     setJoinError(null);
   }, [token]);
 
-  const handleSendToTeacher = (msg: string) => {
-    console.log("Student sent:", msg);
-  };
-
   // ── Screen renderer ──────────────────────────────────────────────────────
   const renderScreen = () => {
-    if (isTeacher) {
-      switch (active) {
-        case "home":           return (
-          <TeacherHome
-            setActive={setActive}
-            sessionActive={sessionActive}
-            sessionCode={teacherSessionCode}
-            onSessionChange={(active, code) => {
-              setSessionActive(active);
-              setTeacherSessionCode(code);
-            }}
-          />
-        );
-        case "teacher-livecc": return <TeacherLiveCC setActive={setActive} />;
-        case "profile":        return <ProfileUI />;
-        default:               return <TeacherHome setActive={setActive} />;
-      }
-    }
-
     switch (active) {
       case "home":
         return (
@@ -188,9 +138,9 @@ export default function TabsLayout() {
           />
         );
       case "board":
-        return <AACBoard onSendToTeacher={handleSendToTeacher} sessionCode={sessionCode} />;
+        return <AACBoard onSendToTeacher={(msg) => appendSentMessage(msg)} sessionCode={sessionCode} />;
       case "livecc":
-        return <LiveCC setActive={(tab) => setActive(tab as ExtendedTabName)} sessionCode={sessionCode} />;
+        return <LiveCC setActive={(tab) => setActive(tab as TabName)} sessionCode={sessionCode} />;
       case "profile":
         return <ProfileUI />;
       default:
@@ -198,31 +148,12 @@ export default function TabsLayout() {
     }
   };
 
-  const showReturnPill = isTeacher && sessionActive && active !== "teacher-livecc";
-
   return (
     <View style={styles.container}>
       <Animated.View key={active} entering={FadeIn.duration(200)} style={styles.screen}>
         {renderScreen()}
       </Animated.View>
-
-      {showReturnPill && (
-        <TouchableOpacity
-          style={[styles.returnPill, { bottom: navHeight + 8 }]}
-          onPress={() => setActive("teacher-livecc")}
-          activeOpacity={0.88}
-        >
-          <Text style={styles.returnPillDot}>🟢</Text>
-          <Text style={styles.returnPillText}>Return to Live Room</Text>
-          <Text style={styles.returnPillArrow}>›</Text>
-        </TouchableOpacity>
-      )}
-
-      <BottomNav
-        active={(active === "teacher-livecc" ? "home" : active) as TabName}
-        setActive={(tab) => setActive(tab)}
-        unread={unread}
-      />
+      <BottomNav active={active} setActive={setActive} unread={0} />
     </View>
   );
 }
@@ -230,16 +161,4 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   screen:    { flex: 1 },
-  returnPill: {
-    position: "absolute", alignSelf: "center",
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "#047857",
-    paddingHorizontal: 20, paddingVertical: 12,
-    borderRadius: Radius.full,
-    ...Shadow.md,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
-  },
-  returnPillDot:   { fontSize: 14 },
-  returnPillText:  { fontSize: FontSize.sm, color: "#FFFFFF", fontWeight: "700" },
-  returnPillArrow: { fontSize: 18, color: "#FFFFFF", fontWeight: "300" },
 });

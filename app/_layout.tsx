@@ -6,6 +6,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { CrossAlertProvider } from '../components/CrossAlert';
 import { ThemeProvider } from '../contexts/ThemeContext';
+import { LiveCCProvider } from '../contexts/LiveCCContext';
 
 // Keep the native splash visible until we're ready to show the app.
 SplashScreen.preventAutoHideAsync();
@@ -93,14 +94,16 @@ export default function RootLayout() {
     <ThemeProvider>
       <CrossAlertProvider>
         <AuthProvider>
-          <RootNavigator />
+          <LiveCCProvider>
+            <RootNavigator />
+          </LiveCCProvider>
         </AuthProvider>
       </CrossAlertProvider>
     </ThemeProvider>
   );
 }
 
-const PURPLE  = '#2D226A';
+const PURPLE  = '#0F172A';
 const TEAL    = '#1AADDC';
 const TEAL_MID = '#0DD0F5';
 

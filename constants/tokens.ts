@@ -2,7 +2,7 @@ export const Colors = {
   // Brand - Blue (Teacher)
   teal:        "#1AADDC",
   tealMid:     "#0E8DB8",
-  tealLight:   "#E0F5FC",
+  tealLight:   "#E0F6FD",
   tealBorder:  "#9ADCF0",
 
   // Brand - Purple (Student primary)
@@ -30,7 +30,7 @@ export const Colors = {
   text2:       "#475569",
   text3:       "#94A3B8",
   white:       "#FFFFFF",
-  bg:          "#F4F2FF",
+  bg:          "#F0F5F9",
 };
 
 export const Radius = {

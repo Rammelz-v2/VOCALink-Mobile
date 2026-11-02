@@ -5,7 +5,6 @@ import Animated, {
   withSequence, withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "../../contexts/AuthContext";
 import { Colors as C, FontSize, Shadow } from "../../constants/tokens";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLayout } from "../../hooks/useLayout";
@@ -81,15 +80,10 @@ const AnimatedTabButton: React.FC<{
 // ── Main nav bar ──────────────────────────────────────────────────────────────
 const BottomNav: React.FC<BottomNavProps> = ({ active, setActive, unread = 0 }) => {
   const insets       = useSafeAreaInsets();
-  const { user }     = useAuth();
   const { colors }   = useTheme();
   const { isTablet, isLandscape } = useLayout();
-  const isTeacher    = user?.status === "TEACHER";
 
-  const visibleTabs = ALL_TABS.filter(tab => {
-    if (isTeacher && (tab.id === "board" || tab.id === "livecc")) return false;
-    return true;
-  });
+  const visibleTabs = ALL_TABS;
 
   const paddingBottom  = Math.max(insets.bottom, isLandscape ? 4 : 8);
   const paddingTop     = isTablet ? 14 : (isLandscape ? 6 : 10);
@@ -127,7 +121,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingHorizontal: 8,
     ...Shadow.lg,
-    shadowColor: "#2D226A",
+    shadowColor: "#0F172A",
     shadowOpacity: 0.12,
   },
   tab:        { flex: 1, alignItems: "center", gap: 2 },

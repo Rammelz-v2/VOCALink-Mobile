@@ -53,11 +53,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       try {
         const stored = await storage.getItem(TOKEN_KEY);
         if (stored) {
-          setToken(stored);
           const res = await axios.get(`${API_BASE_URL}/profile/me`, {
             headers: { Authorization: `Bearer ${stored}` },
           });
-          setUser(res.data);
+          if (res.data.status === "TEACHER") {
+            await storage.deleteItem(TOKEN_KEY);
+          } else {
+            setToken(stored);
+            setUser(res.data);
+          }
         }
       } catch (error: any) {
         const status = error?.response?.status;
@@ -83,17 +87,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     const accessToken: string = response.data.access_token;
+
+    const profileRes = await axios.get(`${API_BASE_URL}/profile/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (profileRes.data.status === "TEACHER") {
+      throw new Error("Teacher accounts are not supported on the mobile app. Please use the VocaLink web dashboard.");
+    }
+
     await storage.setItem(TOKEN_KEY, accessToken);
     setToken(accessToken);
-
-    try {
-      const profileRes = await axios.get(`${API_BASE_URL}/profile/me`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      setUser(profileRes.data);
-    } catch {
-      setUser((prevUser) => prevUser ? { ...prevUser, username: "new_username" } : null);
-    }
+    setUser(profileRes.data);
   };
 
   const signup = async (username: string, email: string, password: string, fullName?: string) => {

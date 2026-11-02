@@ -23,7 +23,7 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ title, subtitle, rig
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: "#2D226A",
+    backgroundColor: "#0F172A",
     overflow: "hidden",
   },
   accentBar: {

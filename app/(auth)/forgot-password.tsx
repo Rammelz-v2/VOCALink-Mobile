@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useState } from "react";
@@ -59,11 +60,19 @@ export default function ForgotPasswordScreen() {
             <Text style={styles.successText}>
               Check your inbox for instructions to reset your password.
             </Text>
-            <TouchableOpacity 
-              style={fallbackStyles.button} 
+            <TouchableOpacity
               onPress={() => router.push("/(auth)/login" as any)}
+              activeOpacity={0.85}
+              style={{ marginTop: 8 }}
             >
-              <Text style={fallbackStyles.buttonText}>Back to Sign In</Text>
+              <LinearGradient
+                colors={["#2DD4E6", "#14B8B0"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={fallbackStyles.button}
+              >
+                <Text style={fallbackStyles.buttonText}>Back to Sign In</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         ) : (
@@ -84,19 +93,27 @@ export default function ForgotPasswordScreen() {
             />
             {error ? <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text> : null}
 
-            <TouchableOpacity 
-              style={[fallbackStyles.button, loading && fallbackStyles.buttonDisabled]} 
+            <TouchableOpacity
               onPress={handleReset}
               disabled={loading}
+              activeOpacity={0.85}
+              style={{ marginTop: 22, opacity: loading ? 0.65 : 1 }}
             >
-              {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={fallbackStyles.buttonText}>Send Reset Link</Text>}
+              <LinearGradient
+                colors={["#2DD4E6", "#14B8B0"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={fallbackStyles.button}
+              >
+                {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={fallbackStyles.buttonText}>Send Reset Link</Text>}
+              </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[fallbackStyles.button, { backgroundColor: 'transparent', marginTop: 10 }]} 
+            <TouchableOpacity
+              style={{ alignItems: "center", marginTop: 14 }}
               onPress={() => router.push("/(auth)/login" as any)}
             >
-              <Text style={[fallbackStyles.buttonText, { color: '#00AEEF' }]}>Back to Sign In</Text>
+              <Text style={{ color: "#1AADDC", fontSize: 14, fontWeight: "600" }}>Back to Sign In</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -106,9 +123,8 @@ export default function ForgotPasswordScreen() {
 }
 
 const fallbackStyles = StyleSheet.create({
-  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8, marginTop: 12 },
-  input: { backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 16, fontSize: 16, color: '#111827', marginBottom: 8 },
-  button: { backgroundColor: '#00AEEF', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 },
-  buttonDisabled: { backgroundColor: '#9CA3AF' },
-  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  label: { fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: '#EEF2F8', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 9, padding: 12, paddingHorizontal: 14, fontSize: 14, color: '#0F172A', marginBottom: 4 },
+  button: { padding: 13, borderRadius: 9, alignItems: 'center' as const, shadowColor: 'rgba(45,212,230,0.4)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 1, shadowRadius: 20, elevation: 6 },
+  buttonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 });

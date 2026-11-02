@@ -3,7 +3,7 @@ import { StyleSheet } from "react-native";
 export const forgotPasswordStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#00AEEF",
+    backgroundColor: "#0F172A",
   },
 
   /* ── Top Bar ────────────────────────────── */
@@ -13,7 +13,7 @@ export const forgotPasswordStyles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: "#00AEEF",
+    backgroundColor: "#0F172A",
   },
   backBtn: {
     padding: 6,
@@ -45,12 +45,12 @@ export const forgotPasswordStyles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "800",
-    color: "#1A1A2E",
+    color: "#0F172A",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#64748B",
     marginBottom: 28,
     lineHeight: 20,
   },
@@ -71,12 +71,12 @@ export const forgotPasswordStyles = StyleSheet.create({
   successTitle: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#1A1A2E",
+    color: "#0F172A",
     marginBottom: 10,
   },
   successText: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#64748B",
     textAlign: "center",
     lineHeight: 20,
     marginBottom: 32,

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, {
@@ -6,27 +6,11 @@ import Animated, {
   useSharedValue, useAnimatedStyle,
   withRepeat, withSequence, withTiming,
 } from "react-native-reanimated";
-import axios from "axios";
-import { useAuth } from "../../contexts/AuthContext";
-import { API_BASE_URL } from "../../constants/api";
+import { useLiveCC } from "../../contexts/LiveCCContext";
 import { ScreenHeader } from "../ui/ScreenHeader";
 import { FontSize, Radius, Spacing } from "../../constants/tokens";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLayout } from "../../hooks/useLayout";
-
-const POLL_MS = 1500;
-
-type Speaker = "teacher" | "student" | "event";
-
-interface CCLine {
-  id:         string;
-  text:       string;
-  time:       string;
-  speaker:    Speaker;
-  name:       string;
-  failed?:    boolean;
-  eventKind?: "join" | "leave" | "start" | "end";
-}
 
 interface LiveCCProps {
   setActive?: (tab: string) => void;
@@ -34,19 +18,10 @@ interface LiveCCProps {
 }
 
 const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
-  const { token, user } = useAuth();
+  const { lines, connected, teacherName } = useLiveCC();
   const { colors }      = useTheme();
   const { isTablet, isLandscape } = useLayout();
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
-
-  const [lines,       setLines]       = useState<CCLine[]>([]);
-  const [connected,   setConnected]   = useState(false);
-  const [teacherName, setTeacherName] = useState("Teacher");
-
-  const studentName    = (user as any)?.full_name ?? (user as any)?.username ?? "You";
-  const lastTsRef      = useRef<string>("");
-  const joinedOnceRef  = useRef(false);
-  const prevConnected  = useRef(false);
 
   // ── Pulsing live dot ──────────────────────────────────────────────────────
   const dotOpacity = useSharedValue(1);
@@ -69,91 +44,14 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
     opacity: dotOpacity.value,
   }));
 
-  // ── Caption polling — only when in an active session ─────────────────────
-  const pollCaptions = useCallback(async () => {
-    if (!token || !sessionCode) return;
-    try {
-      const res = await axios.get(
-        `${API_BASE_URL}/cc/messages/?since=${encodeURIComponent(lastTsRef.current)}&session_code=${sessionCode ?? ""}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      const msgs: any[] = res.data;
-      if (msgs.length > 0) {
-        const formatted: CCLine[] = msgs.map((m) => ({
-          id:      m.id,
-          text:    m.text,
-          time: m.sent_at
-            ? new Date(m.sent_at.endsWith("Z") ? m.sent_at : m.sent_at + "Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          speaker: m.speaker === "student" ? "student" : "teacher",
-          name:    m.sender_name ?? (m.speaker === "student" ? studentName : teacherName),
-        }));
-
-        // Pick up teacher name from incoming messages
-        const firstTeacher = formatted.find(f => f.speaker === "teacher" && f.name);
-        if (firstTeacher) setTeacherName(firstTeacher.name);
-
-        setLines((prev) => {
-          const confirmed = new Set(formatted.map((f) => `${f.name}:${f.text}`));
-          const withoutDupes = prev.filter(
-            (l) => !(l.id.startsWith("local-") && confirmed.has(`${l.name}:${l.text}`)),
-          );
-          const existingIds = new Set(withoutDupes.map((l) => l.id));
-          const newOnly = formatted.filter((f) => !existingIds.has(f.id));
-          return [...withoutDupes, ...newOnly];
-        });
-        lastTsRef.current = msgs[msgs.length - 1].sent_at;
-      }
-      setConnected(true);
-
-      // Inject "You joined" once on first successful connection
-      if (!joinedOnceRef.current) {
-        joinedOnceRef.current = true;
-        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        setLines(prev => [
-          { id: "event-join-self", text: "You joined the session", speaker: "event", name: "System", time, eventKind: "join" },
-          ...prev,
-        ]);
-      }
-    } catch {
-      // Detect session end: was connected, now failing
-      if (prevConnected.current) {
-        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        let endText = "Session has ended";
-        try {
-          const statusRes = await axios.get(
-            `${API_BASE_URL}/sessions/student?session_code=${encodeURIComponent(sessionCode ?? "")}`,
-            { headers: { Authorization: `Bearer ${token}` } },
-          );
-          if (statusRes.data?.ended_reason === "inactivity") {
-            endText = "Session ended due to inactivity";
-          }
-        } catch { /* backend unreachable — use generic message */ }
-        setLines(prev => [
-          ...prev,
-          { id: `event-end-${Date.now()}`, text: endText, speaker: "event", name: "System", time, eventKind: "end" },
-        ]);
-      }
-      setConnected(false);
-    }
-    prevConnected.current = connected;
-  }, [token, sessionCode, teacherName, studentName, connected]);
-
-  useEffect(() => {
-    if (!token || !sessionCode) return;
-    pollCaptions();
-    const iv = setInterval(pollCaptions, POLL_MS);
-    return () => clearInterval(iv);
-  }, [pollCaptions, token, sessionCode]);
-
   // ── No session gate ───────────────────────────────────────────────────────
   if (!sessionCode) {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
         <Animated.View entering={FadeIn.duration(400)} style={s.noSessionScreen}>
           <Text style={s.noSessionEmoji}>🔒</Text>
-          <Text style={s.noSessionTitle}>No Active Session</Text>
-          <Text style={s.noSessionSub}>
+          <Text style={[s.noSessionTitle, { color: colors.text }]}>No Active Session</Text>
+          <Text style={[s.noSessionSub, { color: colors.text2 }]}>
             Ask your teacher for the session code, then enter it on the Home screen to join.
           </Text>
           <TouchableOpacity
@@ -179,7 +77,7 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
         {lines.length === 0 ? (
           <Animated.View entering={FadeIn.duration(500)} style={s.emptyWrap}>
             <Text style={s.emptyEmoji}>📡</Text>
-            <Text style={s.emptyText}>Waiting for {teacherName} to speak…</Text>
+            <Text style={[s.emptyText, { color: colors.text2 }]}>Waiting for {teacherName} to speak…</Text>
           </Animated.View>
         ) : (
           lines.map((line, idx) => {
@@ -199,7 +97,7 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
                   style={[s.eventLine, { backgroundColor: c.bg }]}>
                   <Text style={{ fontSize: 13 }}>{c.icon}</Text>
                   <Text style={[s.eventText, { color: c.color }]}>{line.text}</Text>
-                  <Text style={s.eventTime}>{line.time}</Text>
+                  <Text style={[s.eventTime, { color: colors.text3 }]}>{line.time}</Text>
                 </Animated.View>
               );
             }
@@ -219,7 +117,9 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
                   </Text>
                   <Text style={[
                     s.ccText,
+                    { color: colors.text2 },
                     isLatest && s.ccTextLatest,
+                    isLatest && { color: colors.text },
                     isTablet && { fontSize: 28, lineHeight: 40 },
                     isLatest && isTablet && { fontSize: 34, lineHeight: 46 },
                   ]}>
@@ -236,16 +136,16 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
   );
 
   const controls = (
-    <View style={[s.bottomArea, isTablet && isLandscape && s.sidePanel]}>
+    <View style={[s.bottomArea, { backgroundColor: colors.surface, borderTopColor: colors.border }, isTablet && isLandscape && s.sidePanel]}>
       <View style={s.statusRow}>
         <Animated.View style={[s.liveOrb, !connected && s.liveOrbOff, dotStyle]} />
-        <Text style={[s.statusText, isTablet && { fontSize: FontSize.sm }]}>
+        <Text style={[s.statusText, { color: colors.text3 }, isTablet && { fontSize: FontSize.sm }]}>
           {connected ? `Live · ${teacherName}  ·  Code: ${sessionCode}` : "Connecting to class…"}
         </Text>
       </View>
 
       <TouchableOpacity
-        style={s.aacBtn}
+        style={[s.aacBtn, { backgroundColor: colors.tealLight, borderColor: colors.border }]}
         onPress={() => setActive?.("board")}
         activeOpacity={0.82}
       >
@@ -253,16 +153,16 @@ const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
           <Text style={{ fontSize: isTablet ? 32 : 26 }}>🗣️</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[s.aacBtnTitle, isTablet && { fontSize: FontSize.lg }]}>Open AAC Board</Text>
-          <Text style={s.aacBtnSub}>Build a full message for your teacher</Text>
+          <Text style={[s.aacBtnTitle, { color: colors.text }, isTablet && { fontSize: FontSize.lg }]}>Open AAC Board</Text>
+          <Text style={[s.aacBtnSub, { color: colors.text2 }]}>Build a full message for your teacher</Text>
         </View>
-        <Text style={s.aacBtnArrow}>›</Text>
+        <Text style={[s.aacBtnArrow, { color: colors.text3 }]}>›</Text>
       </TouchableOpacity>
     </View>
   );
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right"]}>
       <ScreenHeader
         title="Live Captions"
         subtitle={connected ? `● Live · ${teacherName}` : "○ Connecting…"}
@@ -287,14 +187,14 @@ const TEAL   = "#1AADDC";
 const PURPLE = "#534AB7";
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#1A1B1E" },
+  safe: { flex: 1 },
 
   // No-session gate
   noSessionScreen: { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, gap: 16 },
   noSessionEmoji:  { fontSize: 64 },
   noSessionTitle:  { fontSize: 22, fontWeight: "800", color: "#F9FAFB", textAlign: "center" },
   noSessionSub:    { fontSize: FontSize.base, color: "#6B7280", textAlign: "center", lineHeight: 26 },
-  noSessionBtn:    { marginTop: 8, backgroundColor: "#7C5CFC", borderRadius: 999, paddingHorizontal: 28, paddingVertical: 14 },
+  noSessionBtn:    { marginTop: 8, backgroundColor: "#1AADDC", borderRadius: 999, paddingHorizontal: 28, paddingVertical: 14 },
   noSessionBtnText:{ fontSize: FontSize.base, fontWeight: "800", color: "#FFF" },
 
   // Caption area
@@ -321,8 +221,7 @@ const s = StyleSheet.create({
 
   // Bottom area
   bottomArea: {
-    borderTopWidth: 1, borderTopColor: "#2D2F34",
-    backgroundColor: "#22242A",
+    borderTopWidth: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: 14, paddingBottom: 18,
     gap: 12,
@@ -340,7 +239,7 @@ const s = StyleSheet.create({
   },
   aacBtnIconWrap: {
     width: 48, height: 48, borderRadius: 14,
-    backgroundColor: PURPLE,
+    backgroundColor: "#1AADDC",
     alignItems: "center", justifyContent: "center",
   },
   aacBtnTitle: { fontSize: FontSize.md, fontWeight: "800", color: "#F3F4F6" },
@@ -353,7 +252,7 @@ const s = StyleSheet.create({
     width: 320,
     borderTopWidth: 0,
     borderLeftWidth: 1,
-    borderLeftColor: "#2D2F34",
+    borderLeftColor: "#E2E8F0",
     justifyContent: "center",
   },
 });

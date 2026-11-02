@@ -46,7 +46,7 @@ export default function VerifyEmailScreen() {
       <StatusBar style="light" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <LinearGradient colors={["#1AADDC", "#0E8DB8"]} style={styles.header}>
+          <LinearGradient colors={["#070F1E", "#0B1526", "#12213A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
             <Text style={styles.icon}>📧</Text>
             <Text style={styles.title}>Check Your Email</Text>
             <Text style={styles.sub}>
@@ -117,7 +117,7 @@ export default function VerifyEmailScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe:       { flex: 1, backgroundColor: "#F0F4F8" },
+  safe:       { flex: 1, backgroundColor: "#F0F5F9" },
   scroll:     { flexGrow: 1 },
   header: {
     padding: 40, paddingTop: 60, alignItems: "center",
@@ -130,9 +130,9 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: "#fff", borderTopLeftRadius: 28,
     borderTopRightRadius: 28, padding: 28, paddingTop: 32, marginTop: -20,
   },
-  label:      { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 10 },
+  label:      { fontSize: 13, fontWeight: "600", color: "#0F172A", marginBottom: 10 },
   codeInput: {
-    backgroundColor: "#F3F4F6", borderWidth: 2, borderColor: "#1AADDC",
+    backgroundColor: "#EEF2F8", borderWidth: 2, borderColor: "#1AADDC",
     borderRadius: 14, padding: 18, fontSize: 28, fontWeight: "800",
     color: "#0F172A", textAlign: "center", letterSpacing: 12, marginBottom: 8,
   },

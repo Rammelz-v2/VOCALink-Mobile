@@ -1,14 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  PanResponder,
-  Pressable, ScrollView, StyleSheet,
+  PanResponder, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, {
-  useSharedValue, useAnimatedStyle, withSpring, withSequence,
-  FadeIn,
-} from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import axios from "axios";
@@ -21,36 +17,32 @@ import { useTheme } from "../../contexts/ThemeContext";
 import type { AACCategory, AACIcon } from "../../constants/types";
 import { ScreenHeader } from "../ui/ScreenHeader";
 import { useLayout } from "../../hooks/useLayout";
+import AACCell from "../board/AACCell";
+import MessageBuilder from "../board/MessageBuilder";
+import SmartSuggestions, { Prediction } from "../board/SmartSuggestions";
+import CategoryTabs, { CATEGORIES } from "../board/CategoryTabs";
+import ActionBar from "../board/ActionBar";
 
 const GAP = 12;
 
 console.log("icons:", AAC_ICONS.length, AAC_ICONS.filter(i => i.category === "math").length);
-// Chunk array into rows of N
+
 function chunk<T>(arr: T[], n: number): T[][] {
   const rows: T[][] = [];
   for (let i = 0; i < arr.length; i += n) rows.push(arr.slice(i, i + n));
   return rows;
 }
 
-// ── LSTM prediction parsing ───────────────────────────────────────────────────
 const PREDICT_TOP_K = 5;
 
-interface Prediction {
-  icon: AACIcon;
-  score?: number; // 0–1 probability from the model, when provided
-}
-
-// Accepts either `predictions: ["want", ...]` or
-// `predictions: [{ icon_id: "want", score: 0.42 }, ...]` (also `probability` /
-// `confidence`), so the board keeps working if the backend response evolves.
 function parsePredictions(data: any): Prediction[] {
   const raw: any[] = Array.isArray(data) ? data : data?.predictions ?? [];
-  // The FastAPI backend returns a parallel `confidence` array; `scores` is also accepted
   const scoreList = data?.confidence ?? data?.scores;
   const scores: number[] | undefined = Array.isArray(scoreList) ? scoreList : undefined;
   const out: Prediction[] = [];
   raw.forEach((p, idx) => {
     const id = typeof p === "string" ? p : p?.icon_id ?? p?.id;
+    if (!id) return;
     const icon = AAC_ICONS.find(i => i.id === id);
     if (!icon || out.some(o => o.icon.id === icon.id)) return;
     const s = typeof p === "object" ? p?.score ?? p?.probability ?? p?.confidence : scores?.[idx];
@@ -68,7 +60,6 @@ const REQUEST_TYPE_BY_ICON_ID: Record<string, string> = {
   dizzy: "emergency",
   unsafe: "emergency",
   get_adult: "assistance",
-  // extra emergency icons
   headache: "emergency",
   cant_breathe: "emergency",
   bleeding: "emergency",
@@ -77,53 +68,6 @@ const REQUEST_TYPE_BY_ICON_ID: Record<string, string> = {
   fell_down: "emergency",
   fever: "emergency",
 };
-
-// ── Category config ────────────────────────────────────────────────────────────
-const CATEGORIES: { id: AACCategory; label: string; emoji: string; color: string }[] = [
-  { id: "all",           label: "All",       emoji: "📋", color: "#475569" },
-  { id: "needs",         label: "Needs",     emoji: "💧", color: "#0EA5E9" },
-  { id: "emotions",      label: "Feelings",  emoji: "😊", color: "#EC4899" },
-  { id: "classroom",     label: "Class",     emoji: "📖", color: "#8B5CF6" },
-  { id: "actions",       label: "Actions",   emoji: "✅", color: "#22C55E" },
-  { id: "communication", label: "Talk",      emoji: "💬", color: "#DB2777" },
-  { id: "people",        label: "People",    emoji: "👤", color: "#F97316" },
-  { id: "places",        label: "Places",    emoji: "📍", color: "#0D9488" },
-  { id: "math",          label: "Math",      emoji: "➕", color: "#2563EB" },
-  { id: "emergency",     label: "Emergency", emoji: "🚨", color: "#DC2626" },
-  { id: "countries",     label: "Countries", emoji: "🌍", color: "#0369A1" },
-];
-
-// ── Animated AAC cell ─────────────────────────────────────────────────────────
-const AACCell: React.FC<{
-  icon: AACIcon;
-  onPress: (icon: AACIcon) => void;
-  size: number;
-  emojiSize: number;
-}> = React.memo(({ icon, onPress, size, emojiSize }) => {
-  const scale = useSharedValue(1);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={animStyle}>
-      <Pressable
-        onPressIn={() => {
-          scale.value = withSpring(0.87, { damping: 10, stiffness: 500 });
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, { damping: 8, stiffness: 200 });
-        }}
-        onPress={() => onPress(icon)}
-        style={[s.cellBase, { width: size, height: size + 30, backgroundColor: icon.bg }]}
-      >
-        <Text style={{ fontSize: emojiSize }}>{icon.emoji}</Text>
-        <Text style={[s.cellLabel, { width: size - 8, color: "#0F172A" }]} numberOfLines={1}>{icon.label}</Text>
-      </Pressable>
-    </Animated.View>
-  );
-});
 
 interface AACBoardProps {
   onSendToTeacher?: (message: string) => void;
@@ -141,7 +85,6 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const catScrollRef  = useRef<ScrollView>(null);
   useEffect(() => { categoryRef.current = category; }, [category]);
 
-  // Auto-scroll category tabs to keep the active tab visible when swiping
   useEffect(() => {
     const idx = CATEGORIES.findIndex(c => c.id === category);
     if (idx < 0 || !catScrollRef.current) return;
@@ -165,19 +108,18 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       },
     })
   ).current;
+
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [sent, setSent]         = useState(false);
   const [requestSent, setRequestSent] = useState<string | null>(null);
 
-  // ── LSTM next-icon prediction (FastAPI /predict-next/) ────────────────────
   const [predictions, setPredictions]       = useState<Prediction[]>([]);
   const [predictLoading, setPredictLoading] = useState(false);
 
   useEffect(() => {
     if (!token || !sessionCode) return;
     const controller = new AbortController();
-    // Debounce so rapid taps only trigger one request for the final sequence
     const timer = setTimeout(async () => {
       setPredictLoading(true);
       try {
@@ -186,13 +128,11 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
           { sequence: selected.map(s => s.id), top_k: PREDICT_TOP_K },
           { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal, timeout: 8000 }
         );
-        // Don't suggest the icon that was just tapped
         const lastId = selected[selected.length - 1]?.id;
         setPredictions(
           parsePredictions(res.data).filter(p => p.icon.id !== lastId).slice(0, PREDICT_TOP_K)
         );
       } catch (err) {
-        // Keep the last suggestions on a cancelled request; clear them on real errors
         if (!axios.isCancel(err)) setPredictions([]);
       } finally {
         if (!controller.signal.aborted) setPredictLoading(false);
@@ -208,11 +148,6 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const rows = chunk(filtered, COLS);
   const messageText = selected.map(i => i.label).join(" ");
 
-  // Tapping an icon only builds the message locally — nothing is sent to
-  // the backend (and therefore nothing appears on the teacher's screen)
-  // until the student taps Send. The exception is request icons
-  // (medication/bathroom/assistance), which fire immediately since they're
-  // urgent and shouldn't wait for a full sentence to be built.
   const handleIconPress = (icon: AACIcon) => {
     const requestType = REQUEST_TYPE_BY_ICON_ID[icon.id];
 
@@ -253,13 +188,6 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     onSendToTeacher?.(messageText);
 
     const headers = { Authorization: `Bearer ${token}` };
-
-    // Log the whole built message as a single entry. /api/logs/ already
-    // looks up the student's active session and attaches session_id itself,
-    // so this is the only network call needed — a second call to
-    // /api/sessions/log/ used to run here too and created a duplicate row
-    // for the same message every time a session was active.
-    // icon_sequence (icon ids in tap order) is the LSTM's training data.
     axios.post(`${API_BASE_URL}/logs/`,
       {
         icon_id: "message",
@@ -275,7 +203,6 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     setTimeout(() => { setSent(false); setSelected([]); }, 2000);
   };
 
-  // ── No session → show waiting screen ────────────────────────────────────
   if (!sessionCode) {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right", "bottom"]}>
@@ -295,7 +222,6 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right", "bottom"]}>
 
-      {/* ── Header ── */}
       <ScreenHeader
         title="AAC Board"
         subtitle="🔴 Session Live — teacher is watching"
@@ -309,109 +235,40 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
         ) : undefined}
       />
 
-      {/* ── Request confirmation toast ── */}
       {requestSent && (
         <View style={s.requestToast}>
           <Text style={s.requestToastText}>✋ {requestSent}</Text>
         </View>
       )}
 
-      {/* ── Message builder ── */}
-      <View style={[s.builder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {selected.length === 0 ? (
-          <View style={s.builderEmpty}>
-            <Text style={s.builderEmptyEmoji}>👆</Text>
-            <Text style={[s.builderEmptyText, { color: colors.text3 }]}>Tap icons to build your message</Text>
-          </View>
-        ) : (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
-              {selected.map((icon, i) => (
-                <TouchableOpacity
-                  key={i}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelected(prev => prev.filter((_, idx) => idx !== i));
-                  }}
-                  style={s.chip}
-                  activeOpacity={0.7}
-                >
-                  <Text style={s.chipEmoji}>{icon.emoji}</Text>
-                  <Text style={s.chipLabel}>{icon.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <Text style={[s.messagePreview, { color: colors.text2 }]} numberOfLines={1}>"{messageText}"</Text>
-          </>
-        )}
-      </View>
+      <MessageBuilder
+        selected={selected}
+        onRemove={(idx) => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setSelected(prev => prev.filter((_, i) => i !== idx));
+        }}
+      />
 
-      {/* ── LSTM Smart Suggestions ── */}
-      {predictions.length > 0 && (
-        <View style={[s.predictWrap, { backgroundColor: colors.purpleLight }]}>
-          <View style={s.predictHeader}>
-            <Text style={s.predictTitle}>✨ Suggested Next</Text>
-            <Text style={s.predictBadge}>LSTM</Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.predictRow}
-          >
-            {predictions.map(({ icon, score }) => (
-              <TouchableOpacity
-                key={`pred-${icon.id}`}
-                onPress={() => handleIconPress(icon)}
-                activeOpacity={0.75}
-                style={[s.predictChip, { backgroundColor: icon.bg, opacity: predictLoading ? 0.6 : 1 }]}
-              >
-                <Text style={s.predictEmoji}>{icon.emoji}</Text>
-                <Text style={s.predictLabel} numberOfLines={1}>{icon.label}</Text>
-                {score !== undefined && (
-                  <Text style={s.predictScore}>{Math.round(score * 100)}%</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-            {predictLoading && (
-              <View style={[s.predictChip, { backgroundColor: "#F1F5F9" }]}>
-                <Text style={s.predictEmoji}>⏳</Text>
-                <Text style={s.predictLabel}>...</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      )}
+      <SmartSuggestions
+        predictions={predictions}
+        predictLoading={predictLoading}
+        onPress={handleIconPress}
+      />
 
-      {/* ── Category tabs ── */}
+      <CategoryTabs
+        category={category}
+        setCategory={setCategory}
+        isTablet={isTablet}
+        hPad={PAD}
+        catScrollRef={catScrollRef}
+      />
+
       <ScrollView
-        ref={catScrollRef}
-        horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[s.catRow, { paddingHorizontal: PAD }]}
-        style={s.catWrap}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]}
+        style={{ flex: 1 }}
+        {...swipePan.panHandlers}
       >
-        {CATEGORIES.map(cat => {
-          const active = category === cat.id;
-          return (
-            <TouchableOpacity
-              key={cat.id}
-              onPress={() => { Haptics.selectionAsync(); setCategory(cat.id); }}
-              activeOpacity={0.8}
-              style={[
-                s.catTab,
-                { backgroundColor: colors.surface },
-                active && { backgroundColor: cat.color, borderColor: cat.color },
-                isTablet && s.catTabTablet,
-              ]}
-            >
-              <Text style={[s.catEmoji, isTablet && { fontSize: 24 }]}>{cat.emoji}</Text>
-              <Text style={[s.catLabel, { color: colors.text2 }, active && s.catLabelActive, isTablet && { fontSize: FontSize.base }]}>{cat.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ── Icon grid — swipe left/right to change category ── */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]} style={{ flex: 1 }} {...swipePan.panHandlers}>
         <Animated.View key={category} entering={FadeIn.duration(180)}>
           {rows.map((row, ri) => (
             <View key={ri} style={s.row}>
@@ -432,27 +289,14 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
         </Animated.View>
       </ScrollView>
 
-      {/* ── Action buttons ── */}
-      <View style={[s.actions, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <Pressable
-          onPress={handleSpeak}
-          onPressIn={() => {}}
-          disabled={!selected.length || speaking}
-          style={[s.actionBtn, s.speakBtn, (!selected.length || speaking) && s.btnDisabled]}
-        >
-          <Text style={s.actionEmoji}>🔊</Text>
-          <Text style={s.actionText}>{speaking ? "Speaking..." : "Speak"}</Text>
-        </Pressable>
+      <ActionBar
+        hasSelection={selected.length > 0}
+        speaking={speaking}
+        sent={sent}
+        onSpeak={handleSpeak}
+        onSend={handleSend}
+      />
 
-        <Pressable
-          onPress={handleSend}
-          disabled={!selected.length}
-          style={[s.actionBtn, s.sendBtn, !selected.length && s.btnDisabled]}
-        >
-          <Text style={s.actionEmoji}>{sent ? "✅" : "📤"}</Text>
-          <Text style={s.actionText}>{sent ? "Sent!" : "Send"}</Text>
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 };
@@ -460,34 +304,25 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
 
-  // No session
   noSessionWrap: {
     flex: 1, alignItems: "center", justifyContent: "center", padding: 40,
   },
   noSessionEmoji: { fontSize: 64, marginBottom: 20 },
   noSessionTitle: {
-    fontSize: FontSize.xl, fontWeight: "800", color: C.text,
+    fontSize: FontSize.xl, fontWeight: "800",
     textAlign: "center", marginBottom: 12, letterSpacing: -0.5,
   },
   noSessionSub: {
-    fontSize: FontSize.base, color: C.text3, textAlign: "center",
+    fontSize: FontSize.base, textAlign: "center",
     lineHeight: 24, fontWeight: "500",
   },
 
-  // Header
-  header: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.gray2,
-  },
-  headerTitle: { fontSize: FontSize.lg, fontWeight: "800", color: C.text },
   clearBtn: {
     backgroundColor: C.redLight, paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: Radius.full, borderWidth: 1, borderColor: "#FCA5A5",
   },
   clearBtnText: { fontSize: FontSize.sm, color: C.redDark, fontWeight: "700" },
 
-  // Request toast
   requestToast: {
     marginHorizontal: 16, marginTop: 10, padding: 12, borderRadius: Radius.md,
     backgroundColor: "#FDECEC", borderWidth: 1.5, borderColor: "#FCA5A5",
@@ -495,100 +330,8 @@ const s = StyleSheet.create({
   },
   requestToastText: { fontSize: FontSize.sm, fontWeight: "700", color: "#B91C1C" },
 
-  // Builder
-  builder: {
-    marginHorizontal: 16, marginVertical: 10,
-    minHeight: 88, backgroundColor: C.white,
-    borderRadius: Radius.lg, borderWidth: 2, borderColor: C.gray2,
-    padding: 12, justifyContent: "center", ...Shadow.sm,
-  },
-  builderEmpty: { alignItems: "center", gap: 4 },
-  builderEmptyEmoji: { fontSize: 26 },
-  builderEmptyText: { fontSize: FontSize.sm, color: C.text3, fontWeight: "500" },
-  chipRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  chip: {
-    backgroundColor: C.purpleLight, borderRadius: Radius.md,
-    paddingHorizontal: 12, paddingVertical: 8,
-    alignItems: "center", gap: 4,
-    borderWidth: 1.5, borderColor: C.purpleMid, minWidth: 56,
-  },
-  chipEmoji: { fontSize: 22 },
-  chipLabel: { fontSize: FontSize.xs, color: C.purple, fontWeight: "700" },
-  messagePreview: {
-    marginTop: 6, fontSize: FontSize.sm,
-    color: C.text2, fontWeight: "600", fontStyle: "italic",
-  },
-
-  // LSTM Predictions
-  predictWrap: {
-    marginHorizontal: 16, marginTop: 4, marginBottom: 6,
-    backgroundColor: "#FAF5FF", borderRadius: Radius.lg,
-    borderWidth: 1.5, borderColor: "#E9D5FF",
-    padding: 10, ...Shadow.sm,
-  },
-  predictHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 8, paddingHorizontal: 2,
-  },
-  predictTitle: { fontSize: FontSize.sm, fontWeight: "800", color: "#7C3AED" },
-  predictBadge: {
-    fontSize: 10, fontWeight: "900", color: "#fff",
-    backgroundColor: "#7C3AED", paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: Radius.full, overflow: "hidden", letterSpacing: 0.5,
-  },
-  predictRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  predictChip: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 14, paddingVertical: 10,
-    borderRadius: Radius.full, borderWidth: 1.5, borderColor: "rgba(0,0,0,0.06)",
-    minHeight: 44,
-  },
-  predictEmoji: { fontSize: 22 },
-  predictLabel: { fontSize: FontSize.sm, fontWeight: "700", color: C.text },
-  predictScore: { fontSize: 11, fontWeight: "800", color: "#7C3AED" },
-
-  // Category
-  catWrap: { maxHeight: 78, flexGrow: 0 },
-  catRow: { paddingHorizontal: 16, gap: 10, alignItems: "center", paddingVertical: 10 },
-  catTab: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 18, paddingVertical: 12,
-    borderRadius: Radius.full, borderWidth: 1.5, borderColor: "rgba(0,0,0,0.08)",
-    backgroundColor: C.white, minHeight: 52,
-  },
-  catEmoji: { fontSize: 22 },
-  catLabel: { fontSize: FontSize.base, color: C.text2, fontWeight: "600" },
-  catLabelActive:  { color: C.white, fontWeight: "700" },
-  catTabTablet:    { paddingHorizontal: 22, paddingVertical: 14, minHeight: 58 },
-
-  // Grid — cell dimensions are computed inline using CELL/EMOJI_SZ from useWindowDimensions
   grid: { padding: 16, paddingBottom: 20 },
   row: { flexDirection: "row", gap: 14, marginBottom: 14 },
-  cellBase: {
-    borderRadius: Radius.xl, alignItems: "center", justifyContent: "center",
-    gap: 8, paddingVertical: 14, paddingHorizontal: 8, ...Shadow.sm,
-    shadowColor: "#2D226A", shadowOpacity: 0.08,
-  },
-  cellLabel: {
-    fontSize: FontSize.sm, fontWeight: "700", color: C.text,
-    textAlign: "center", paddingHorizontal: 6,
-  },
-
-  // Actions
-  actions: {
-    flexDirection: "row", gap: 12, padding: 16,
-    borderTopWidth: 1, borderTopColor: C.gray2, backgroundColor: C.white,
-  },
-  actionBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, paddingVertical: 18, borderRadius: Radius.lg,
-    minHeight: 62, ...Shadow.md,
-  },
-  speakBtn:   { backgroundColor: "#0F172A" },
-  sendBtn:    { backgroundColor: "#7C5CFC" },
-  btnDisabled:{ opacity: 0.4               },
-  actionEmoji:{ fontSize: 22               },
-  actionText: { fontSize: FontSize.md, fontWeight: "800", color: C.white },
 });
 
 export default AACBoard;

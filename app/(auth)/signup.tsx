@@ -82,7 +82,8 @@ export default function SignupScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           
           {/* The Beautiful Top Header */}
-          <LinearGradient colors={["#1AADDC", "#0E8DB8", "#0A6E92"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.bluePanel}>
+          <LinearGradient colors={["#070F1E", "#0B1526", "#12213A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.bluePanel}>
+            <View style={styles.tealGlow} />
             <View style={styles.photosContainer}>
               {PHOTOS.map((photo, i) => (
                 <Image key={i} source={photo.source} style={photo.style} />
@@ -148,12 +149,20 @@ export default function SignupScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity 
-              style={[fallbackStyles.button, loading && fallbackStyles.buttonDisabled]} 
+            <TouchableOpacity
               onPress={handleSignup}
               disabled={loading}
+              activeOpacity={0.85}
+              style={{ marginTop: 22, opacity: loading ? 0.65 : 1 }}
             >
-              {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={fallbackStyles.buttonText}>Sign Up</Text>}
+              <LinearGradient
+                colors={["#2DD4E6", "#14B8B0"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={fallbackStyles.button}
+              >
+                {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={fallbackStyles.buttonText}>Sign Up</Text>}
+              </LinearGradient>
             </TouchableOpacity>
 
             <View style={styles.signupRow}>
@@ -169,15 +178,14 @@ export default function SignupScreen() {
   );
 }
 
-// Fallback styles for inputs and buttons so we don't need the missing custom components
+// Fallback styles — same web-matching tokens as login.tsx
 const fallbackStyles = StyleSheet.create({
-  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8, marginTop: 12 },
-  input: { backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 16, fontSize: 16, color: '#111827', marginBottom: 8 },
-  inputWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, marginBottom: 8 },
-  inputInner: { flex: 1, padding: 16, fontSize: 16, color: '#111827' },
-  eyeBtn: { paddingHorizontal: 14, paddingVertical: 12 },
-  eyeText: { fontSize: 20 },
-  button: { backgroundColor: '#1AADDC', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 },
-  buttonDisabled: { backgroundColor: '#9CA3AF' },
-  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  label: { fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: '#EEF2F8', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 9, padding: 12, paddingHorizontal: 14, fontSize: 14, color: '#0F172A', marginBottom: 4 },
+  inputWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#EEF2F8', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 9, marginBottom: 4 },
+  inputInner: { flex: 1, padding: 12, paddingHorizontal: 14, fontSize: 14, color: '#0F172A' },
+  eyeBtn: { paddingHorizontal: 12, paddingVertical: 10 },
+  eyeText: { fontSize: 18, color: '#64748B' },
+  button: { padding: 13, borderRadius: 9, alignItems: 'center' as const, shadowColor: 'rgba(45,212,230,0.4)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 1, shadowRadius: 20, elevation: 6 },
+  buttonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 });

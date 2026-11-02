@@ -14,6 +14,7 @@ export interface AACIcon {
   emoji: string;
   category: AACCategory;
   bg: string;
+  flagCode?: string; // ISO 3166-1 alpha-2 lowercase, e.g. "ph" — renders a real flag image on Android
 }
 
 export type AACCategory =

@@ -18,14 +18,14 @@ export type ThemeColors = {
 };
 
 export const LIGHT: ThemeColors = {
-  bg:           '#F4F2FF',
+  bg:           '#F0F5F9',
   surface:      '#FFFFFF',
   border:       '#E2E8F0',
   borderSubtle: '#F1F5F9',
   text:         '#0F172A',
   text2:        '#475569',
   text3:        '#94A3B8',
-  tealLight:    '#E0F5FC',
+  tealLight:    '#E0F6FD',
   purpleLight:  '#EEEDFE',
   input:        '#F1F5F9',
 };
