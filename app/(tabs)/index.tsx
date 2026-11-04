@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLiveCC } from "../../contexts/LiveCCContext";
 import axios from "axios";
@@ -123,11 +122,35 @@ export default function TabsLayout() {
     setJoinError(null);
   }, [token]);
 
-  // ── Screen renderer ──────────────────────────────────────────────────────
-  const renderScreen = () => {
-    switch (active) {
-      case "home":
-        return (
+  // The AAC Board is kept persistently mounted (lazily on first visit) because it holds
+  // 300+ Reanimated cells — remounting it on every tab switch causes a 0.5–1s lag.
+  // All other screens are cheap to remount so they use simple conditional rendering.
+  const [boardMounted, setBoardMounted] = useState(false);
+  useEffect(() => {
+    if (active === "board") setBoardMounted(true);
+  }, [active]);
+
+  const boardActive = active === "board";
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.screen}>
+
+        {/* AAC Board — kept mounted after first visit so 300+ Reanimated cells don't remount.
+            When inactive it's hidden with display:none (removes it from layout so the active
+            screen gets the full flex space). display:none on a normal flex child is safe on
+            Android; the previous absoluteFillObject approach caused layout issues there. */}
+        {boardMounted && (
+          <View
+            style={boardActive ? styles.boardActive : styles.boardHidden}
+            pointerEvents={boardActive ? "auto" : "none"}
+          >
+            <AACBoard onSendToTeacher={(msg) => appendSentMessage(msg)} sessionCode={sessionCode} />
+          </View>
+        )}
+
+        {/* Other tabs — normal mount/unmount (fast enough) */}
+        {active === "home" && (
           <Home
             setActive={setActive}
             sessionCode={sessionCode}
@@ -136,29 +159,19 @@ export default function TabsLayout() {
             joining={joining}
             joinError={joinError}
           />
-        );
-      case "board":
-        return <AACBoard onSendToTeacher={(msg) => appendSentMessage(msg)} sessionCode={sessionCode} />;
-      case "livecc":
-        return <LiveCC setActive={(tab) => setActive(tab as TabName)} sessionCode={sessionCode} />;
-      case "profile":
-        return <ProfileUI />;
-      default:
-        return null;
-    }
-  };
+        )}
+        {active === "livecc"  && <LiveCC setActive={(t) => setActive(t as TabName)} sessionCode={sessionCode} />}
+        {active === "profile" && <ProfileUI />}
 
-  return (
-    <View style={styles.container}>
-      <Animated.View key={active} entering={FadeIn.duration(200)} style={styles.screen}>
-        {renderScreen()}
-      </Animated.View>
+      </View>
       <BottomNav active={active} setActive={setActive} unread={0} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
-  screen:    { flex: 1 },
+  container:   { flex: 1, backgroundColor: C.bg },
+  screen:      { flex: 1 },
+  boardActive: { flex: 1 },
+  boardHidden: { display: "none" },
 });

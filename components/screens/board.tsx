@@ -1,10 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   StyleSheet, Text, TouchableOpacity, View,
 } from "react-native";
 import { GestureDetector, Gesture, ScrollView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, { FadeIn, SlideInLeft, SlideInRight } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  withSpring,
+  runOnJS,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import axios from "axios";
@@ -51,22 +57,76 @@ function parsePredictions(data: any): Prediction[] {
 }
 
 const REQUEST_TYPE_BY_ICON_ID: Record<string, string> = {
-  medicine: "medication",
-  toilet: "bathroom",
-  emergency: "emergency",
-  hurt: "emergency",
-  stomachache: "emergency",
-  dizzy: "emergency",
-  unsafe: "emergency",
-  get_adult: "assistance",
-  headache: "emergency",
-  cant_breathe: "emergency",
-  bleeding: "emergency",
-  very_scared: "emergency",
+  // Emergencies
+  medicine:      "medication",
+  toilet:        "bathroom",
+  emergency:     "emergency",
+  hurt:          "emergency",
+  stomachache:   "emergency",
+  dizzy:         "emergency",
+  unsafe:        "emergency",
+  get_adult:     "assistance",
+  headache:      "emergency",
+  cant_breathe:  "emergency",
+  bleeding:      "emergency",
+  very_scared:   "emergency",
   being_bullied: "emergency",
-  fell_down: "emergency",
-  fever: "emergency",
+  fell_down:     "emergency",
+  fever:         "emergency",
+  // Everyday classroom requests — each gets its own type so the teacher
+  // sees a meaningful label even on requests that have no note yet.
+  help:          "help",
+  water:         "water",
+  food:          "food",
+  pencil:        "pencil",
+  tissue:        "tissue",
+  need_break:    "break",
+  rest:          "rest",
+  cold:          "cold",
+  hot:           "hot",
+  too_loud:      "too_loud",
+  fix_chair:     "chair",
+  go_outside:    "outside",
+  bag:           "bag",
 };
+
+// Human-readable suffix for each request icon → "[Name] + suffix"
+const REQUEST_PHRASE: Record<string, string> = {
+  help:          "needs help ✋",
+  water:         "wants water 💧",
+  food:          "wants food 🍎",
+  toilet:        "needs to use the bathroom 🚻",
+  pencil:        "needs a pencil ✏️",
+  tissue:        "needs a tissue 🤧",
+  need_break:    "wants to take a break ⏸️",
+  rest:          "needs to rest 😴",
+  cold:          "is feeling cold 🥶",
+  hot:           "is feeling too hot 🥵",
+  too_loud:      "says it's too loud 🔇",
+  fix_chair:     "needs to fix their seat 🪑",
+  go_outside:    "wants to go outside 🌳",
+  bag:           "needs their bag 🎒",
+  medicine:      "needs medicine 💊",
+  emergency:     "has an emergency 🚨",
+  hurt:          "is hurt 🤕",
+  stomachache:   "has a stomachache 🤢",
+  dizzy:         "is feeling dizzy 😵",
+  unsafe:        "doesn't feel safe ⚠️",
+  get_adult:     "needs an adult 🙋",
+  headache:      "has a headache 🤯",
+  cant_breathe:  "can't breathe 😮‍💨",
+  bleeding:      "is bleeding 🩸",
+  very_scared:   "is very scared 😱",
+  being_bullied: "is being bullied 😢",
+  fell_down:     "fell down 🤸",
+  fever:         "has a fever 🌡️",
+};
+
+// Everyday classroom requests (shown in the Requests tab)
+const REQUESTS_ICON_IDS = new Set([
+  "help", "water", "food", "toilet", "pencil", "tissue",
+  "need_break", "rest", "cold", "hot", "too_loud", "fix_chair", "go_outside", "bag",
+]);
 
 interface AACBoardProps {
   onSendToTeacher?: (message: string) => void;
@@ -82,7 +142,6 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const [category, setCategory] = useState<AACCategory>("all");
   const categoryRef   = useRef<AACCategory>("all");
   const catScrollRef  = useRef<ScrollView>(null);
-  useEffect(() => { categoryRef.current = category; }, [category]);
 
   useEffect(() => {
     const idx = CATEGORIES.findIndex(c => c.id === category);
@@ -90,27 +149,47 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     catScrollRef.current.scrollTo({ x: Math.max(0, idx * 88 - 60), animated: true });
   }, [category]);
 
-  const [swipeDir, setSwipeDir] = useState<'left' | 'right'>('left');
+  const dragX    = useSharedValue(0);
+  const catIdxSV = useSharedValue(0);
+
+  useEffect(() => {
+    categoryRef.current = category;
+    catIdxSV.value = CATEGORIES.findIndex(c => c.id === category);
+    dragX.value = 0; // snap after tab-tap or post-swipe re-render
+  }, [category]);
+
+  const doSetCategory = (id: AACCategory) => {
+    setCategory(id);
+    Haptics.selectionAsync();
+  };
 
   const swipeGesture = useMemo(() =>
     Gesture.Pan()
-      .activeOffsetX([-25, 25])
+      .activeOffsetX([-20, 20])
       .failOffsetY([-15, 15])
-      .runOnJS(true)
+      .onChange((e) => { dragX.value = e.translationX; })
       .onEnd((e) => {
-        if (Math.abs(e.translationX) < 60) return;
-        const idx = CATEGORIES.findIndex(c => c.id === categoryRef.current);
-        if (e.translationX < 0 && idx < CATEGORIES.length - 1) {
-          setSwipeDir('left');
-          setCategory(CATEGORIES[idx + 1].id);
-          Haptics.selectionAsync();
-        } else if (e.translationX > 0 && idx > 0) {
-          setSwipeDir('right');
-          setCategory(CATEGORIES[idx - 1].id);
-          Haptics.selectionAsync();
+        const dx  = e.translationX;
+        const idx = catIdxSV.value;
+        if (dx < -60 && idx < CATEGORIES.length - 1) {
+          // Snap back, then switch — content swap is instant (no remount needed).
+          dragX.value = withTiming(0, { duration: 150 }, () => {
+            runOnJS(doSetCategory)(CATEGORIES[idx + 1].id);
+          });
+        } else if (dx > 60 && idx > 0) {
+          dragX.value = withTiming(0, { duration: 150 }, () => {
+            runOnJS(doSetCategory)(CATEGORIES[idx - 1].id);
+          });
+        } else {
+          dragX.value = withSpring(0, { damping: 20, stiffness: 250 });
         }
       }),
   []);
+
+  const gridAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: dragX.value }],
+  }));
+
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [sent, setSent]         = useState(false);
@@ -143,35 +222,43 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     return () => { clearTimeout(timer); controller.abort(); };
   }, [selected, token, sessionCode]);
 
-  const filtered = category === "all"
-    ? AAC_ICONS
-    : AAC_ICONS.filter(i => i.category === category);
-
-  const rows = chunk(filtered, COLS);
+  // Pre-compute rows for every category once — switching becomes a style-only change.
+  const allRows = useMemo(() => {
+    const filter = (cat: AACCategory): AACIcon[] =>
+      cat === "all"      ? AAC_ICONS :
+      cat === "requests" ? AAC_ICONS.filter(i => REQUESTS_ICON_IDS.has(i.id)) :
+                           AAC_ICONS.filter(i => i.category === cat);
+    const result: Record<string, AACIcon[][]> = {};
+    CATEGORIES.forEach(cat => { result[cat.id] = chunk(filter(cat.id as AACCategory), COLS); });
+    return result;
+  }, [COLS]);
   const messageText = selected.map(i => i.label).join(" ");
 
-  const handleIconPress = (icon: AACIcon) => {
+  const handleIconPress = useCallback((icon: AACIcon) => {
     const requestType = REQUEST_TYPE_BY_ICON_ID[icon.id];
 
     if (requestType) {
+      const name   = user?.first_name || user?.username || "Student";
+      const phrase = REQUEST_PHRASE[icon.id] ?? `wants ${icon.label.toLowerCase()}`;
+      const note   = `${name} ${phrase}`;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       axios.post(
         `${API_BASE_URL}/requests/`,
-        { request_type: requestType, note: `${icon.emoji} ${icon.label}`, session_code: sessionCode ?? undefined },
+        { request_type: requestType, note, session_code: sessionCode ?? undefined },
         { headers: { Authorization: `Bearer ${token}` } }
       ).then(() => {
-        setRequestSent(icon.label);
-        setTimeout(() => setRequestSent(null), 2500);
+        setRequestSent(note);
+        setTimeout(() => setRequestSent(null), 3000);
       }).catch(() => {
-        setRequestSent(`${icon.label} — not sent, try again`);
-        setTimeout(() => setRequestSent(null), 2500);
+        setRequestSent(`${note} — not sent, try again`);
+        setTimeout(() => setRequestSent(null), 3000);
       });
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelected(prev => [...prev, icon]);
-  };
+  }, [user, token, sessionCode]);
 
   const handleSpeak = () => {
     if (!selected.length) return;
@@ -239,7 +326,7 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
 
       {requestSent && (
         <View style={s.requestToast}>
-          <Text style={s.requestToastText}>✋ {requestSent}</Text>
+          <Text style={s.requestToastText}>{requestSent}</Text>
         </View>
       )}
 
@@ -266,33 +353,40 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       />
 
       <GestureDetector gesture={swipeGesture}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]}
-          style={{ flex: 1, overflow: 'hidden' }}
-        >
-          <Animated.View
-            key={category}
-            entering={swipeDir === 'left' ? SlideInRight.duration(220) : SlideInLeft.duration(220)}
-          >
-            {rows.map((row, ri) => (
-              <View key={ri} style={s.row}>
-                {row.map(icon => (
-                  <AACCell
-                    key={icon.id}
-                    icon={icon}
-                    onPress={handleIconPress}
-                    size={CELL}
-                    emojiSize={EMOJI_SZ}
-                  />
+        {/* All categories are pre-rendered and kept mounted.
+            Inactive pages collapse to height:0 so switching is a style-only change — no remount lag. */}
+        <Animated.View style={[s.gridOuter, gridAnimStyle]}>
+          {CATEGORIES.map(cat => (
+            <View
+              key={cat.id}
+              style={cat.id === category ? s.pageActive : s.pageHidden}
+              pointerEvents={cat.id === category ? "auto" : "none"}
+            >
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[s.grid, { padding: PAD, paddingBottom: 20 }]}
+                style={{ flex: 1 }}
+              >
+                {(allRows[cat.id] ?? []).map((row, ri) => (
+                  <View key={ri} style={s.row}>
+                    {row.map(icon => (
+                      <AACCell
+                        key={icon.id}
+                        icon={icon}
+                        onPress={handleIconPress}
+                        size={CELL}
+                        emojiSize={EMOJI_SZ}
+                      />
+                    ))}
+                    {row.length < COLS && Array.from({ length: COLS - row.length }).map((_, i) => (
+                      <View key={i} style={{ width: CELL }} />
+                    ))}
+                  </View>
                 ))}
-                {row.length < COLS && Array.from({ length: COLS - row.length }).map((_, i) => (
-                  <View key={`empty-${i}`} style={{ width: CELL }} />
-                ))}
-              </View>
-            ))}
-          </Animated.View>
-        </ScrollView>
+              </ScrollView>
+            </View>
+          ))}
+        </Animated.View>
       </GestureDetector>
 
       <ActionBar
@@ -336,6 +430,9 @@ const s = StyleSheet.create({
   },
   requestToastText: { fontSize: FontSize.sm, fontWeight: "700", color: "#B91C1C" },
 
+  gridOuter:  { flex: 1, overflow: 'hidden' },
+  pageActive: { flex: 1 },
+  pageHidden: { height: 0, overflow: 'hidden' },
   grid: { padding: 16, paddingBottom: 20 },
   row: { flexDirection: "row", gap: 14, marginBottom: 14 },
 });

@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { CrossAlertProvider } from '../components/CrossAlert';
 import { ThemeProvider } from '../contexts/ThemeContext';
@@ -91,15 +92,17 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <CrossAlertProvider>
-        <AuthProvider>
-          <LiveCCProvider>
-            <RootNavigator />
-          </LiveCCProvider>
-        </AuthProvider>
-      </CrossAlertProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <CrossAlertProvider>
+          <AuthProvider>
+            <LiveCCProvider>
+              <RootNavigator />
+            </LiveCCProvider>
+          </AuthProvider>
+        </CrossAlertProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 

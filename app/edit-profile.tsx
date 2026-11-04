@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
 import StyledInput from "../components/editprofile/StyledInput";
 import Field from "../components/editprofile/Field";
 import LockedField from "../components/editprofile/LockedField";
@@ -39,6 +40,7 @@ function parseGradeLevel(value: string): { grade: string; section: string } {
 
 export default function EditProfileScreen() {
   const { user, updateProfile } = useAuth();
+  const { colors } = useTheme();
 
   const displayName = user?.first_name
     ? `${user.first_name} ${user.last_name ?? ""}`.trim()
@@ -88,10 +90,10 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={["top", "left", "right", "bottom"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
           contentContainerStyle={s.scroll}
@@ -161,12 +163,12 @@ export default function EditProfileScreen() {
             {/* ── Account — read-only ─────────────────────────── */}
             <View style={s.group}>
               <SectionTitle title="Account" />
-              <View style={s.lockedCard}>
+              <View style={[s.lockedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <LockedField icon="🏷️" label="Username" value={user?.username ?? ""} />
-                <View style={s.lockedDivider} />
+                <View style={[s.lockedDivider, { backgroundColor: colors.borderSubtle }]} />
                 <LockedField icon="📧" label="Email" value={user?.email ?? ""} />
               </View>
-              <Text style={s.lockedNote}>
+              <Text style={[s.lockedNote, { color: colors.text3 }]}>
                 Username and email can only be changed by an administrator.
               </Text>
             </View>
@@ -227,7 +229,7 @@ export default function EditProfileScreen() {
 }
 
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: "#F0F5F9" },
+  safe:   { flex: 1 },
   scroll: { paddingBottom: 120 },
 
   hero: { backgroundColor: PURPLE, paddingBottom: 36, overflow: "hidden" },

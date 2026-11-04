@@ -7,7 +7,7 @@ import type { AACCategory } from "../../constants/types";
 
 export const CATEGORIES: { id: AACCategory; label: string; emoji: string; color: string }[] = [
   { id: "all",           label: "All",       emoji: "📋", color: "#475569" },
-  { id: "needs",         label: "Needs",     emoji: "💧", color: "#0EA5E9" },
+  { id: "requests",      label: "Requests",  emoji: "✋", color: "#F59E0B" },
   { id: "emotions",      label: "Feelings",  emoji: "😊", color: "#EC4899" },
   { id: "classroom",     label: "Class",     emoji: "📖", color: "#8B5CF6" },
   { id: "actions",       label: "Actions",   emoji: "✅", color: "#22C55E" },
