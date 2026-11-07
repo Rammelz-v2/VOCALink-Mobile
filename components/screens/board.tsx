@@ -15,6 +15,7 @@ import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import axios from "axios";
 
+import { useLiveCC } from "../../contexts/LiveCCContext";
 import { AAC_ICONS } from "../../constants/mockdata";
 import { API_BASE_URL } from "../../constants/api";
 import { useAuth } from "../../contexts/AuthContext";
@@ -134,8 +135,9 @@ interface AACBoardProps {
 }
 
 const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => {
-  const { token, user } = useAuth();
-  const { colors }      = useTheme();
+  const { token, user }  = useAuth();
+  const { colors }       = useTheme();
+  const { lines }        = useLiveCC();
   const { sw: SW, aacCols: COLS, hPad: PAD, isTablet, isLandscape } = useLayout();
   const CELL     = Math.floor((SW - PAD * 2 - GAP * (COLS - 1)) / COLS);
   const EMOJI_SZ = Math.floor(CELL * (isTablet ? 0.38 : 0.44));
@@ -193,7 +195,9 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const [selected, setSelected] = useState<AACIcon[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [sent, setSent]         = useState(false);
-  const [requestSent, setRequestSent] = useState<string | null>(null);
+  const [requestSent, setRequestSent]       = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<{ id: number; note: string } | null>(null);
+  const [ackFeedback,   setAckFeedback]     = useState<string | null>(null);
 
   const [predictions, setPredictions]       = useState<Prediction[]>([]);
   const [predictLoading, setPredictLoading] = useState(false);
@@ -222,10 +226,28 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
     return () => { clearTimeout(timer); controller.abort(); };
   }, [selected, token, sessionCode]);
 
+  // Watch the Live CC feed for an acknowledgment broadcast sent by the teacher on acknowledge.
+  const prevLinesLenRef = useRef(lines.length);
+  useEffect(() => {
+    const newLines = lines.slice(prevLinesLenRef.current);
+    prevLinesLenRef.current = lines.length;
+    if (!pendingRequest || !newLines.length) return;
+    const ack = newLines.find(l => l.speaker === "teacher" && l.text.includes("[ACK]"));
+    if (ack) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setAckFeedback("Your teacher acknowledged your request");
+      setPendingRequest(null);
+      setTimeout(() => setAckFeedback(null), 5000);
+    }
+  }, [lines, pendingRequest]);
+
   // Pre-compute rows for every category once — switching becomes a style-only change.
   const allRows = useMemo(() => {
     const filter = (cat: AACCategory): AACIcon[] =>
-      cat === "all"      ? AAC_ICONS :
+      cat === "all"      ? [
+                             ...AAC_ICONS.filter(i => !REQUESTS_ICON_IDS.has(i.id)),
+                             ...AAC_ICONS.filter(i =>  REQUESTS_ICON_IDS.has(i.id)),
+                           ] :
       cat === "requests" ? AAC_ICONS.filter(i => REQUESTS_ICON_IDS.has(i.id)) :
                            AAC_ICONS.filter(i => i.category === cat);
     const result: Record<string, AACIcon[][]> = {};
@@ -246,8 +268,9 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
         `${API_BASE_URL}/requests/`,
         { request_type: requestType, note, session_code: sessionCode ?? undefined },
         { headers: { Authorization: `Bearer ${token}` } }
-      ).then(() => {
+      ).then((res) => {
         setRequestSent(note);
+        setPendingRequest({ id: res.data.id, note });
         setTimeout(() => setRequestSent(null), 3000);
       }).catch(() => {
         setRequestSent(`${note} — not sent, try again`);
@@ -327,6 +350,12 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
       {requestSent && (
         <View style={s.requestToast}>
           <Text style={s.requestToastText}>{requestSent}</Text>
+        </View>
+      )}
+
+      {ackFeedback && (
+        <View style={s.ackToast}>
+          <Text style={s.ackToastText}>{ackFeedback}</Text>
         </View>
       )}
 
@@ -429,6 +458,13 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   requestToastText: { fontSize: FontSize.sm, fontWeight: "700", color: "#B91C1C" },
+
+  ackToast: {
+    marginHorizontal: 16, marginTop: 6, padding: 12, borderRadius: Radius.md,
+    backgroundColor: "#DCFCE7", borderWidth: 1.5, borderColor: "#86EFAC",
+    alignItems: "center",
+  },
+  ackToastText: { fontSize: FontSize.sm, fontWeight: "700", color: "#15803D" },
 
   gridOuter:  { flex: 1, overflow: 'hidden' },
   pageActive: { flex: 1 },

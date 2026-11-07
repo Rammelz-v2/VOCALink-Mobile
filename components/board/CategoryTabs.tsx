@@ -7,7 +7,6 @@ import type { AACCategory } from "../../constants/types";
 
 export const CATEGORIES: { id: AACCategory; label: string; emoji: string; color: string }[] = [
   { id: "all",           label: "All",       emoji: "📋", color: "#475569" },
-  { id: "requests",      label: "Requests",  emoji: "✋", color: "#F59E0B" },
   { id: "emotions",      label: "Feelings",  emoji: "😊", color: "#EC4899" },
   { id: "classroom",     label: "Class",     emoji: "📖", color: "#8B5CF6" },
   { id: "actions",       label: "Actions",   emoji: "✅", color: "#22C55E" },
@@ -15,8 +14,9 @@ export const CATEGORIES: { id: AACCategory; label: string; emoji: string; color:
   { id: "people",        label: "People",    emoji: "👤", color: "#F97316" },
   { id: "places",        label: "Places",    emoji: "📍", color: "#0D9488" },
   { id: "math",          label: "Math",      emoji: "➕", color: "#2563EB" },
-  { id: "emergency",     label: "Emergency", emoji: "🚨", color: "#DC2626" },
   { id: "countries",     label: "Countries", emoji: "🚩", color: "#0369A1" },
+  { id: "requests",      label: "Requests",  emoji: "✋", color: "#F59E0B" },
+  { id: "emergency",     label: "Emergency", emoji: "🚨", color: "#DC2626" },
 ];
 
 interface CategoryTabsProps {

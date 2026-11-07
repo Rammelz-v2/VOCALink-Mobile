@@ -9,7 +9,7 @@ export function useLayout() {
   // AAC grid columns
   const aacCols = isTablet
     ? (isLandscape ? 6 : 5)
-    : (isLandscape ? 4 : 3);
+    : (isLandscape ? 5 : 4);
 
   // Scale factor relative to a 390px baseline phone
   const scale = Math.min(sw / 390, 1.35);

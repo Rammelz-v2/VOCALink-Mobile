@@ -18,7 +18,9 @@ interface LiveCCProps {
 }
 
 const LiveCC: React.FC<LiveCCProps> = ({ setActive, sessionCode }) => {
-  const { lines, connected, teacherName } = useLiveCC();
+  const { lines: rawLines, connected, teacherName } = useLiveCC();
+  // ACK broadcasts are internal signals for the board — hide them from the transcript.
+  const lines = rawLines.filter(l => !l.text.includes("[ACK]"));
   const { colors }      = useTheme();
   const { isTablet, isLandscape } = useLayout();
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
