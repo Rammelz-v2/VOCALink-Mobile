@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLiveCC } from "../../contexts/LiveCCContext";
 import axios from "axios";
@@ -15,13 +17,39 @@ import { appendSentMessage } from "../../utils/sentMessages";
 
 export default function TabsLayout() {
   const { user, token } = useAuth();
-  const { updateSessionCode } = useLiveCC();
+  const { updateSessionCode, lines } = useLiveCC();
+  const insets = useSafeAreaInsets();
 
   const [active,     setActive]     = useState<TabName>("home");
   const [sessionCode, setSessionCode] = useState<string | null>(null);
 
   // Keep LiveCCContext in sync with the current session code
   useEffect(() => { updateSessionCode(sessionCode); }, [sessionCode]);
+
+  // ── Teacher message notification (visible from any tab) ──────────────────
+  const [notif, setNotif]       = useState<{ text: string; name: string } | null>(null);
+  const notifTimerRef           = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevTeacherCountRef     = useRef<number | null>(null);
+
+  const dismissNotif = useCallback(() => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    setNotif(null);
+  }, []);
+
+  useEffect(() => {
+    const teacherLines = lines.filter(l => l.speaker === "teacher" && !l.text.includes("[ACK]"));
+    if (prevTeacherCountRef.current === null) {
+      prevTeacherCountRef.current = teacherLines.length;
+      return;
+    }
+    if (teacherLines.length > prevTeacherCountRef.current) {
+      const newest = teacherLines[teacherLines.length - 1];
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+      setNotif({ text: newest.text, name: newest.name });
+      notifTimerRef.current = setTimeout(dismissNotif, 4500);
+    }
+    prevTeacherCountRef.current = teacherLines.length;
+  }, [lines]);
   const [joining,    setJoining]    = useState(false);
   const [joinError,  setJoinError]  = useState<string | null>(null);
 
@@ -165,6 +193,26 @@ export default function TabsLayout() {
 
       </View>
       <BottomNav active={active} setActive={setActive} unread={0} />
+
+      {notif && (
+        <Animated.View
+          entering={FadeInDown.duration(320).springify()}
+          exiting={FadeOutUp.duration(220)}
+          style={[styles.notifBanner, { top: insets.top + 8 }]}
+        >
+          <View style={styles.notifHeader}>
+            <Text style={styles.notifHeaderIcon}>📢</Text>
+            <Text style={styles.notifHeaderName}>{notif.name}</Text>
+            <Pressable onPress={dismissNotif} hitSlop={12} style={styles.notifCloseBtn}>
+              <Text style={styles.notifClose}>✕</Text>
+            </Pressable>
+          </View>
+          <Pressable onPress={() => { setActive("livecc"); dismissNotif(); }}>
+            <Text style={styles.notifBody} numberOfLines={4}>{notif.text}</Text>
+            <Text style={styles.notifTap}>Tap to open Live Captions →</Text>
+          </Pressable>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -174,4 +222,31 @@ const styles = StyleSheet.create({
   screen:      { flex: 1 },
   boardActive: { flex: 1 },
   boardHidden: { display: "none" },
+
+  notifBanner: {
+    position: "absolute", left: 8, right: 8,
+    backgroundColor: "#0F172A",
+    borderRadius: 20, overflow: "hidden",
+    borderWidth: 1.5, borderColor: "rgba(26,173,220,0.4)",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.55, shadowRadius: 24, elevation: 20,
+    zIndex: 999,
+  },
+  notifHeader: {
+    flexDirection: "row", alignItems: "center",
+    gap: 10, backgroundColor: "#1AADDC",
+    paddingHorizontal: 16, paddingVertical: 13,
+  },
+  notifHeaderIcon: { fontSize: 22 },
+  notifHeaderName: { flex: 1, fontSize: 16, fontWeight: "800", color: "#fff" },
+  notifCloseBtn:   { padding: 2 },
+  notifClose:      { fontSize: 20, fontWeight: "700", color: "rgba(255,255,255,0.75)" },
+  notifBody: {
+    fontSize: 18, fontWeight: "500", color: "#F1F5F9",
+    lineHeight: 26, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8,
+  },
+  notifTap: {
+    fontSize: 12, color: "#1AADDC", fontWeight: "700",
+    paddingHorizontal: 16, paddingBottom: 14,
+  },
 });

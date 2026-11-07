@@ -24,11 +24,13 @@ import { useTheme } from "../../contexts/ThemeContext";
 import type { AACCategory, AACIcon } from "../../constants/types";
 import { ScreenHeader } from "../ui/ScreenHeader";
 import { useLayout } from "../../hooks/useLayout";
+import { MaterialIcons } from "@expo/vector-icons";
 import AACCell from "../board/AACCell";
 import MessageBuilder from "../board/MessageBuilder";
 import SmartSuggestions, { Prediction } from "../board/SmartSuggestions";
 import CategoryTabs, { CATEGORIES } from "../board/CategoryTabs";
 import ActionBar from "../board/ActionBar";
+import RequestSheet, { SheetType } from "../board/RequestSheet";
 
 const GAP = 12;
 
@@ -123,11 +125,16 @@ const REQUEST_PHRASE: Record<string, string> = {
   fever:         "has a fever 🌡️",
 };
 
-// Everyday classroom requests (shown in the Requests tab)
+// Everyday classroom requests
 const REQUESTS_ICON_IDS = new Set([
   "help", "water", "food", "toilet", "pencil", "tissue",
   "need_break", "rest", "cold", "hot", "too_loud", "fix_chair", "go_outside", "bag",
 ]);
+
+// Medical / emergency icons — everything in REQUEST_TYPE_BY_ICON_ID that isn't a classroom request
+const EMERGENCY_ICON_IDS = new Set(
+  Object.keys(REQUEST_TYPE_BY_ICON_ID).filter(id => !REQUESTS_ICON_IDS.has(id))
+);
 
 interface AACBoardProps {
   onSendToTeacher?: (message: string) => void;
@@ -198,6 +205,8 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   const [requestSent, setRequestSent]       = useState<string | null>(null);
   const [pendingRequest, setPendingRequest] = useState<{ id: number; note: string } | null>(null);
   const [ackFeedback,   setAckFeedback]     = useState<string | null>(null);
+  const [sheetOpen,     setSheetOpen]       = useState(false);
+  const [sheetType,     setSheetType]       = useState<SheetType>("requests");
 
   const [predictions, setPredictions]       = useState<Prediction[]>([]);
   const [predictLoading, setPredictLoading] = useState(false);
@@ -244,16 +253,17 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
   // Pre-compute rows for every category once — switching becomes a style-only change.
   const allRows = useMemo(() => {
     const filter = (cat: AACCategory): AACIcon[] =>
-      cat === "all"      ? [
-                             ...AAC_ICONS.filter(i => !REQUESTS_ICON_IDS.has(i.id)),
-                             ...AAC_ICONS.filter(i =>  REQUESTS_ICON_IDS.has(i.id)),
-                           ] :
+      cat === "all"      ? AAC_ICONS.filter(i => !REQUESTS_ICON_IDS.has(i.id) && !EMERGENCY_ICON_IDS.has(i.id)) :
       cat === "requests" ? AAC_ICONS.filter(i => REQUESTS_ICON_IDS.has(i.id)) :
+      cat === "emergency"? AAC_ICONS.filter(i => EMERGENCY_ICON_IDS.has(i.id)) :
                            AAC_ICONS.filter(i => i.category === cat);
     const result: Record<string, AACIcon[][]> = {};
     CATEGORIES.forEach(cat => { result[cat.id] = chunk(filter(cat.id as AACCategory), COLS); });
     return result;
   }, [COLS]);
+  const requestIcons   = useMemo(() => AAC_ICONS.filter(i => REQUESTS_ICON_IDS.has(i.id)),  []);
+  const emergencyIcons = useMemo(() => AAC_ICONS.filter(i => EMERGENCY_ICON_IDS.has(i.id)), []);
+
   const messageText = selected.map(i => i.label).join(" ");
 
   const handleIconPress = useCallback((icon: AACIcon) => {
@@ -418,12 +428,43 @@ const AACBoard: React.FC<AACBoardProps> = ({ onSendToTeacher, sessionCode }) => 
         </Animated.View>
       </GestureDetector>
 
+      {/* Request / Emergency quick-access bar */}
+      <View style={s.requestBar}>
+        <TouchableOpacity
+          style={[s.sheetBtn, s.requestSheetBtn]}
+          onPress={() => { setSheetType("requests"); setSheetOpen(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}
+          disabled={!sessionCode}
+          activeOpacity={0.8}
+        >
+          <Text style={s.sheetBtnEmoji}>✋</Text>
+          <Text style={[s.sheetBtnLabel, { color: "#92400E" }]}>Need Something?</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.sheetBtn, s.emergencySheetBtn]}
+          onPress={() => { setSheetType("emergency"); setSheetOpen(true); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); }}
+          disabled={!sessionCode}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="warning" size={22} color="#991B1B" />
+          <Text style={[s.sheetBtnLabel, { color: "#991B1B" }]}>Emergency</Text>
+        </TouchableOpacity>
+      </View>
+
       <ActionBar
         hasSelection={selected.length > 0}
         speaking={speaking}
         sent={sent}
         onSpeak={handleSpeak}
         onSend={handleSend}
+      />
+
+      <RequestSheet
+        visible={sheetOpen}
+        type={sheetType}
+        requestIcons={requestIcons}
+        emergencyIcons={emergencyIcons}
+        onPress={handleIconPress}
+        onClose={() => setSheetOpen(false)}
       />
 
     </SafeAreaView>
@@ -465,6 +506,19 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   ackToastText: { fontSize: FontSize.sm, fontWeight: "700", color: "#15803D" },
+
+  requestBar: {
+    flexDirection: "row", gap: 10,
+    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2,
+  },
+  sheetBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 13, borderRadius: Radius.lg, borderWidth: 1.5,
+  },
+  requestSheetBtn:   { backgroundColor: "#FFFBEB", borderColor: "#FCD34D" },
+  emergencySheetBtn: { backgroundColor: "#FEF2F2", borderColor: "#FCA5A5" },
+  sheetBtnEmoji: { fontSize: 20 },
+  sheetBtnLabel: { fontSize: FontSize.sm, fontWeight: "700" },
 
   gridOuter:  { flex: 1, overflow: 'hidden' },
   pageActive: { flex: 1 },

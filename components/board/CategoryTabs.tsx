@@ -15,8 +15,6 @@ export const CATEGORIES: { id: AACCategory; label: string; emoji: string; color:
   { id: "places",        label: "Places",    emoji: "📍", color: "#0D9488" },
   { id: "math",          label: "Math",      emoji: "➕", color: "#2563EB" },
   { id: "countries",     label: "Countries", emoji: "🚩", color: "#0369A1" },
-  { id: "requests",      label: "Requests",  emoji: "✋", color: "#F59E0B" },
-  { id: "emergency",     label: "Emergency", emoji: "🚨", color: "#DC2626" },
 ];
 
 interface CategoryTabsProps {
